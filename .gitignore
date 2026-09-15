@@ -1,4 +1,5 @@
 *.log
 .netlify-site-id
 netlify-deploy/index.html
+!netlify-deploy/.gitkeep
 __pycache__/

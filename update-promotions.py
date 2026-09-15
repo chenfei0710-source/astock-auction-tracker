@@ -541,16 +541,16 @@ def main(no_deploy=False):
     OUTPUT.write_text(html, encoding="utf-8")
     log(f"  HTML 写入 {OUTPUT}")
 
-    # 部署到 Netlify
+    # 始终生成部署目录
+    DEPLOY_DIR.mkdir(exist_ok=True)
+    deploy_html = DEPLOY_DIR / "index.html"
+    deploy_html.write_text(html, encoding="utf-8")
+
     if no_deploy:
         log("  --no-deploy 跳过 Netlify 部署")
         log("=== 完成 ===")
         print("促销页面已生成（未部署）")
         return
-
-    DEPLOY_DIR.mkdir(exist_ok=True)
-    deploy_html = DEPLOY_DIR / "index.html"
-    deploy_html.write_text(html, encoding="utf-8")
 
     site_id = ""
     if SITE_ID_FILE.exists():
