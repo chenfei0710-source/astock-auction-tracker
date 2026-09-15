@@ -186,6 +186,97 @@ WEBULL_DEFAULT = [
     {"tag_zh":"竞赛","tag_th":"การแข่งขัน","title_zh":"📊 模拟交易周赛","title_th":"Paper Trading Contest ประจำสัปดาห์","desc_zh":"每周参与模拟盘竞赛，排名靠前赢取奖励","desc_th":"แข่ง Paper Trading ทุกสัปดาห์ อันดับดี รับรางวัล","date_zh":"每周举行","date_th":"ทุกสัปดาห์","url":"https://www.webull.co.th/activity"},
 ]
 
+# ── 竞品分析数据 ────────────────────────────────────────────────────────────
+ANALYSIS = {
+    "dime": {
+        "highlights": [
+            ("每月两次免佣金日", "Mid-month（15日）+ Payday 双免佣，泰国券商中频率最高"),
+            ("实物黄金排行奖", "买金量前4名赢 YLG 黄金实物，稀缺感强，吸引高净值用户"),
+            ("生日优惠券力度大", "最多60张60折券，短期内大幅降低交易成本"),
+        ],
+        "lowlights": [
+            ("Lucky股票有使用限制", "赠送的美股有锁定期和交易限制，不能立即变现"),
+            ("换汇活动受众窄", "仅限有外币换汇需求用户，普通股票投资者感知弱"),
+        ],
+        "insight": "Dime! 促销策略以「高频低门槛」为主，Mid-month + Payday 双免佣制造持续回访动机，适合活跃交易用户。黄金排行赛则是差异化亮点，直接对标高净值客群。",
+        "insight_th": "กลยุทธ์ Dime! เน้น 'บ่อยครั้ง ต้นทุนต่ำ' สร้างแรงจูงใจกลับมาใช้งานต่อเนื่อง",
+    },
+    "invx": {
+        "highlights": [
+            ("活动种类最多最全", "覆盖美股/泰股/TFEX/基金/加密/DCA，满足多类型投资者"),
+            ("全年免基金申购费", "Best Deal 2026 全年有效，长期价值最高，无需追热点"),
+            ("BTC返佣50%", "加密资产返佣力度在泰国券商中领先，吸引crypto用户"),
+        ],
+        "lowlights": [
+            ("多数活动9月底到期", "大量活动截止 30 ก.ย.，届时吸引力大幅下降，续约不确定"),
+            ("奖励以积分为主", "INVX Points 兑换有门槛，不如现金/免佣直接，感知价值打折"),
+        ],
+        "insight": "InnovestX 是三家中活动覆盖面最广的，尤其对多元资产投资者友好。但大量活动集中9月底到期，10月促销能否续力是关键观察点。",
+        "insight_th": "InnovestX มีแคมเปญหลากหลายที่สุด แต่หลายรายการหมดอายุ 30 ก.ย. ต้องติดตามว่าจะต่อหรือไม่",
+    },
+    "webull": {
+        "highlights": [
+            ("新户最多60笔免佣，门槛低", "10+50笔分层赠送，规则简单易懂，转化率高"),
+            ("佣金直接打7折", "不需要积分兑换，折扣直接反映在每笔交易，用户感知最强"),
+        ],
+        "lowlights": [
+            ("活动种类最少", "仅4条，覆盖面窄，对老客户缺乏持续激励"),
+            ("新户欢迎礼9月底到期", "主力促销即将到期，若不续期，拉新竞争力将明显减弱"),
+            ("缺乏长期留存机制", "没有积分体系或等级制度，用户黏性主要靠佣金折扣维持"),
+        ],
+        "insight": "Webull TH 策略简单粗暴但有效——直接折扣和免佣对新户转化效率高。但缺乏中长期留存工具，一旦欢迎礼到期，与其他平台的竞争优势会减弱。",
+        "insight_th": "Webull TH เน้นดึงลูกค้าใหม่ด้วยส่วนลดตรงๆ แต่ขาดกลไกรักษาลูกค้าระยะยาว",
+    },
+}
+
+def make_analysis_section():
+    brokers = [
+        ("dime",   "Dime!",     "ไดม์",       "#00a846", "#f0faf4", "#b2dfcb"),
+        ("invx",   "InnovestX", "อินโนเวสท์", "#1a5dc8", "#f0f5ff", "#b3c8f0"),
+        ("webull", "Webull TH", "วีบูลล์",    "#d4000a", "#fff5f5", "#f5b3b6"),
+    ]
+    cards = ""
+    for key, name_zh, name_th, accent, bg, border in brokers:
+        a = ANALYSIS[key]
+        hi_items = "".join(
+            f'<li><strong>{h}</strong> — {d}</li>' for h, d in a["highlights"]
+        )
+        lo_items = "".join(
+            f'<li><strong>{h}</strong> — {d}</li>' for h, d in a["lowlights"]
+        )
+        cards += f'''
+<div class="ana-card" style="--a-accent:{accent};--a-bg:{bg};--a-border:{border}">
+  <div class="ana-header">
+    <span class="ana-logo" style="background:{accent}">{name_zh[:4]}</span>
+    <div>
+      <div class="ana-name">{name_zh}</div>
+      <div class="ana-name-th">{name_th}</div>
+    </div>
+  </div>
+  <div class="ana-cols">
+    <div class="ana-col hi">
+      <div class="ana-col-label">✅ Highlights</div>
+      <ul>{hi_items}</ul>
+    </div>
+    <div class="ana-col lo">
+      <div class="ana-col-label">⚠️ Lowlights</div>
+      <ul>{lo_items}</ul>
+    </div>
+  </div>
+  <div class="ana-insight">
+    💡 {a["insight"]}
+    <div class="ana-insight-th">{a["insight_th"]}</div>
+  </div>
+</div>'''
+
+    return f'''<section class="analysis-section">
+  <div class="analysis-title">
+    📊 竞品促销分析
+    <span class="analysis-title-th">วิเคราะห์โปรโมชันคู่แข่ง moomoo</span>
+  </div>
+  <div class="ana-grid">{cards}</div>
+</section>'''
+
 # ── 配色主题（明亮泰国风） ─────────────────────────────────────────────────
 THEME = {
     "dime":   {"accent":"#00a846","tag_bg":"rgba(0,168,70,.12)","logo_bg":"#00a846","logo_fg":"#fff","border":"#b2dfcb","section_bg":"#f0faf4","header_bg":"linear-gradient(135deg,#e8f5e9,#c8e6c9)"},
@@ -494,6 +585,94 @@ def build_html(dime_items, invx_items, webull_items):
       color: var(--accent);
     }}
 
+    /* ── analysis section ── */
+    .analysis-section {{
+      max-width: 960px;
+      margin: 0 auto 28px;
+    }}
+    .analysis-title {{
+      font-size: 1.2rem;
+      font-weight: 900;
+      color: #1a1a2e;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #e8e0d0;
+    }}
+    .analysis-title-th {{
+      font-size: .82rem;
+      font-weight: 500;
+      color: #999;
+      margin-left: 8px;
+    }}
+    .ana-grid {{
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }}
+    .ana-card {{
+      background: var(--a-bg);
+      border: 1.5px solid var(--a-border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.06);
+    }}
+    .ana-header {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }}
+    .ana-logo {{
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: .74rem; color: #fff;
+      flex-shrink: 0;
+    }}
+    .ana-name {{ font-size: 1rem; font-weight: 800; color: #1a1a2e; }}
+    .ana-name-th {{ font-size: .75rem; color: #999; }}
+    .ana-cols {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }}
+    .ana-col {{ background: #fff; border-radius: 10px; padding: 12px 14px; }}
+    .ana-col.hi {{ border-left: 3px solid #43a047; }}
+    .ana-col.lo {{ border-left: 3px solid #e53935; }}
+    .ana-col-label {{
+      font-size: .72rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: #444;
+      letter-spacing: .04em;
+    }}
+    .ana-col ul {{
+      list-style: none;
+      padding: 0; margin: 0;
+      display: flex; flex-direction: column; gap: 6px;
+    }}
+    .ana-col li {{
+      font-size: .76rem;
+      color: #444;
+      line-height: 1.5;
+    }}
+    .ana-col li strong {{ color: #1a1a2e; }}
+    .ana-insight {{
+      background: rgba(255,255,255,.7);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: .78rem;
+      color: #444;
+      line-height: 1.6;
+      border-left: 3px solid var(--a-accent);
+    }}
+    .ana-insight-th {{
+      font-size: .71rem;
+      color: #888;
+      margin-top: 4px;
+    }}
+
     /* ── footer ── */
     .footer {{
       text-align: center;
@@ -506,6 +685,7 @@ def build_html(dime_items, invx_items, webull_items):
     }}
 
     @media (max-width: 600px) {{
+      .ana-cols {{ grid-template-columns: 1fr; }}
       .page-header {{ border-radius: 14px; padding: 18px 16px; }}
       .page-header h1 {{ font-size: 1.35rem; }}
       .all-btn {{ display: none; }}
@@ -530,6 +710,8 @@ def build_html(dime_items, invx_items, webull_items):
 {sec_dime}
 {sec_invx}
 {sec_webull}
+
+{make_analysis_section()}
 
 <div class="footer">
   数据来源各平台官网 · ข้อมูลจากเว็บไซต์ทางการ · 活动条款以官网为准 · การลงทุนมีความเสี่ยง
