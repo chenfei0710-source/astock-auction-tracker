@@ -1,0 +1,4 @@
+*.log
+.netlify-site-id
+netlify-deploy/index.html
+__pycache__/
