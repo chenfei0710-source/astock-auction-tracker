@@ -9,6 +9,8 @@ on:
 jobs:
   update:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -22,11 +24,11 @@ jobs:
       - name: Generate HTML
         run: python3 update-promotions.py --no-deploy
 
-      - name: Install Netlify CLI
-        run: npm install -g netlify-cli
-
-      - name: Deploy to Netlify
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        run: netlify deploy --prod --dir netlify-deploy
+      - name: Deploy to GitHub Pages
+        run: |
+          cp netlify-deploy/index.html docs/index.html
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add docs/index.html
+          git diff --cached --quiet || git commit -m "Auto-update: $(date +'%Y-%m-%d %H:%M') BKK"
+          git push
