@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>集合竞价 &amp; 大盘数据</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -27,7 +28,99 @@
       color: #666;
       margin-bottom: 28px;
     }
-    .wrap { max-width: 900px; margin: 0 auto; overflow-x: auto; }
+    .wrap { max-width: 960px; margin: 0 auto; }
+
+    /* ── 折线图 ── */
+    .charts-section { margin-bottom: 36px; }
+    .section-title {
+      font-size: 1rem; font-weight: 700; color: #cdd9e5;
+      margin-bottom: 16px; padding-left: 4px;
+      border-left: 3px solid #3b82f6;
+      padding-left: 10px;
+    }
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .chart-grid.single { grid-template-columns: 1fr; }
+    .chart-box {
+      background: #161b22;
+      border-radius: 12px;
+      padding: 20px 20px 12px;
+      box-shadow: 0 0 24px rgba(0,0,0,.4);
+    }
+    .chart-box h3 {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #8b949e;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .chart-box canvas { max-height: 220px; }
+
+    /* ── 分析区 ── */
+    .analysis-wrap {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 36px;
+    }
+    .analysis-block {
+      background: #161b22;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 0 24px rgba(0,0,0,.4);
+    }
+    .an-title {
+      font-size: 0.95rem; font-weight: 700;
+      color: #cdd9e5; margin-bottom: 14px;
+    }
+    .an-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+    }
+    .an-card {
+      background: #0d1117; border-radius: 8px;
+      padding: 12px 10px; text-align: center;
+    }
+    .an-label { font-size: 0.7rem; color: #666; margin-bottom: 6px; }
+    .an-val { font-size: 0.92rem; font-weight: 700; color: #e6edf3; margin-bottom: 4px; }
+    .an-sub { font-size: 0.68rem; color: #555; line-height: 1.4; }
+    .heat-label {
+      font-size: 0.88rem; color: #e6edf3;
+      margin-bottom: 10px; line-height: 1.6;
+    }
+    .summary-p {
+      font-size: 0.82rem; color: #8b949e;
+      margin-bottom: 12px; line-height: 1.6;
+    }
+    .strategy-list {
+      list-style: none; padding: 0;
+    }
+    .strategy-list li {
+      font-size: 0.82rem; color: #adbac7;
+      padding: 6px 0 6px 16px;
+      border-bottom: 1px solid #21262d;
+      line-height: 1.6;
+      position: relative;
+    }
+    .strategy-list li::before {
+      content: "›";
+      position: absolute; left: 0;
+      color: #3b82f6; font-weight: 700;
+    }
+    .strategy-list li:last-child { border-bottom: none; }
+    .disclaimer {
+      font-size: 0.72rem; color: #444;
+      margin-top: 12px;
+    }
+    .pos { color: #ff5555; font-weight: 700; }
+    .neg { color: #22c55e; font-weight: 700; }
+
+    /* ── 数据表 ── */
+    .table-section { margin-bottom: 0; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -39,10 +132,8 @@
     thead tr { background: #0f2137; }
     thead th {
       padding: 14px 10px;
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: #cdd9e5;
-      text-align: center;
+      font-size: 0.85rem; font-weight: 700;
+      color: #cdd9e5; text-align: center;
       white-space: nowrap;
       border-bottom: 2px solid #21262d;
     }
@@ -51,30 +142,92 @@
     tbody tr:last-child { border-bottom: none; }
     tbody tr:hover { background: #1c2128; }
     tbody td {
-      padding: 12px 10px;
-      font-size: 0.88rem;
-      text-align: center;
-      white-space: nowrap;
+      padding: 12px 10px; font-size: 0.88rem;
+      text-align: center; white-space: nowrap;
     }
     td.red { color: #ff8888; font-weight: 600; }
+
+    @media (max-width: 640px) {
+      .chart-grid { grid-template-columns: 1fr; }
+      .analysis-wrap { grid-template-columns: 1fr; }
+      .an-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <h1>集合竞价 &amp; 大盘数据</h1>
-  <p class="meta">数据源: 腾讯行情 &nbsp;|&nbsp; 更新: 2026-09-16 11:11</p>
   <div class="wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>序号</th>
-          <th>日期</th>
-          <th class="red">集合竞价上证</th>
-          <th class="red">集合竞价创业板</th>
-          <th>沪深两市成交额</th>
-          <th>大盘涨跌情况</th>
-        </tr>
-      </thead>
-      <tbody>
+    <h1>集合竞价 &amp; 大盘数据</h1>
+    <p class="meta">数据源: 腾讯行情 &nbsp;|&nbsp; 每交易日 09:26 &amp; 15:15 自动更新 &nbsp;|&nbsp; 最后更新: 2026-09-16 11:16</p>
+
+    <!-- 折线图 -->
+    <div class="charts-section">
+      <div class="section-title">折线图走势</div>
+      <div class="chart-grid">
+        <div class="chart-box">
+          <h3>集合竞价成交额（亿元）</h3>
+          <canvas id="chartAuction"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3>沪深两市成交额（万亿元）</h3>
+          <canvas id="chartMkt"></canvas>
+        </div>
+      </div>
+      <div class="chart-grid single">
+        <div class="chart-box">
+          <h3>大盘涨跌幅（%）</h3>
+          <canvas id="chartPct"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 分析与策略 -->
+    <div class="section-title" style="margin-bottom:16px">分析与策略</div>
+    
+<div class="analysis-wrap">
+  <div class="analysis-block">
+    <div class="an-title">📊 趋势速览</div>
+    <div class="an-grid">
+      <div class="an-card">
+        <div class="an-label">集合竞价上证</div>
+        <div class="an-val">持续缩量 📉</div>
+        <div class="an-sub">近5日均值 85.8亿 vs 历史 86.5亿</div>
+      </div>
+      <div class="an-card">
+        <div class="an-label">集合竞价创业板</div>
+        <div class="an-val">持续缩量 📉</div>
+        <div class="an-sub">近5日均值 41.1亿 vs 历史 43.5亿</div>
+      </div>
+      <div class="an-card">
+        <div class="an-label">沪深两市成交额</div>
+        <div class="an-val">持续缩量 📉</div>
+        <div class="an-sub">近5日均值 1.74万亿 vs 历史 1.94万亿</div>
+      </div>
+    </div>
+  </div>
+  <div class="analysis-block">
+    <div class="an-title">🧭 策略参考</div>
+    <p class="heat-label">⚖️ 近期集合竞价处于历史均值附近，市场情绪平稳。</p>
+    <p class='summary-p'>最新（2026-09-16）：上证集合竞价 <strong class='neg'>66.13亿</strong>（-23.6% vs 历史均值）、创业板集合竞价 <strong class='neg'>16.62亿</strong>（-61.8% vs 历史均值）</p>
+    <ul class="strategy-list"><li>集合竞价量能平稳，以跟随大盘趋势操作为主，无明显异动时避免追高。</li><li>创业板/上证比值低于均值，资金偏向防御，成长股热情不足。</li><li>历史数据显示：集合竞价成交额偏高时当日大盘平均<span class='neg'>-0.43%</span>，偏低时平均 <span class='pos'>+0.16%</span>，近期放量开盘伴随卖压，需注意高开低走风险。</li></ul>
+    <p class="disclaimer">⚠️ 以上分析仅供参考，不构成投资建议。</p>
+  </div>
+</div>
+
+    <!-- 数据明细表 -->
+    <div class="section-title" style="margin-bottom:16px">数据明细</div>
+    <div class="table-section" style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>序号</th>
+            <th>日期</th>
+            <th class="red">集合竞价上证</th>
+            <th class="red">集合竞价创业板</th>
+            <th>沪深两市成交额</th>
+            <th>大盘涨跌情况</th>
+          </tr>
+        </thead>
+        <tbody>
         <tr>
           <td>1</td>
           <td>08月19日（周三）</td>
@@ -243,8 +396,113 @@
           <td></td>
           <td></td>
         </tr>
-      </tbody>
-    </table>
+        </tbody>
+      </table>
+    </div>
   </div>
+
+  <script>
+  const LABELS   = ["08-19", "08-20", "08-21", "08-24", "08-25", "08-26", "08-27", "08-28", "08-31", "09-01", "09-02", "09-03", "09-04", "09-07", "09-08", "09-09", "09-10", "09-11", "09-14", "09-15", "09-16"];
+  const SH_AUC   = [139.1, 102.5, 72.76, 72.76, 66.55, 68.79, 78.89, 85.96, 123.4, 74.79, null, null, null, null, null, null, null, null, null, null, 66.13];
+  const CYB_AUC  = [68.77, 50.55, 43.16, 43.06, 32.35, 35.36, 39.71, 53.96, 55.75, 39.32, null, null, null, null, null, null, null, null, null, null, 16.62];
+  const MKT_AMT  = [2.51, 2.08, 1.88, 2.01, 1.83, 1.8, 2.12, 2.1, 2.13, 2.04, 1.79, 1.76, 2.03, 1.95, 1.96, 1.86, 1.65, 1.97, 1.63, 1.61, null];
+  const PCT_VALS = [-2.4, 0.24, 0.04, -0.59, 0.19, 0.59, 1.13, -0.1, 0.86, -0.16, -0.97, 0.02, -0.3, 0.07, 0.2, 0.28, -0.43, -1.18, -0.07, -0.54, null];
+
+  const CHART_DEFAULTS = {
+    responsive: true,
+    maintainAspectRatio: true,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { labels: { color: '#8b949e', font: { size: 12 } } },
+      tooltip: {
+        backgroundColor: '#1c2128',
+        titleColor: '#cdd9e5',
+        bodyColor: '#adbac7',
+        borderColor: '#30363d',
+        borderWidth: 1,
+      }
+    },
+    scales: {
+      x: {
+        ticks: { color: '#555', maxRotation: 45, font: { size: 10 } },
+        grid: { color: '#1c2128' },
+      },
+      y: {
+        ticks: { color: '#555', font: { size: 11 } },
+        grid: { color: '#1c2128' },
+      }
+    }
+  };
+
+  function lineDataset(label, data, color, dashed=false) {
+    return {
+      label,
+      data,
+      borderColor: color,
+      backgroundColor: color + '22',
+      borderWidth: 2,
+      borderDash: dashed ? [5,4] : [],
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      tension: 0.3,
+      spanGaps: true,
+    };
+  }
+
+  // 集合竞价折线图
+  new Chart(document.getElementById('chartAuction'), {
+    type: 'line',
+    data: {
+      labels: LABELS,
+      datasets: [
+        lineDataset('集合竞价上证（亿）', SH_AUC,  '#ff8888'),
+        lineDataset('集合竞价创业板（亿）', CYB_AUC, '#fbbf24'),
+      ]
+    },
+    options: CHART_DEFAULTS,
+  });
+
+  // 成交额折线图
+  new Chart(document.getElementById('chartMkt'), {
+    type: 'line',
+    data: {
+      labels: LABELS,
+      datasets: [ lineDataset('沪深成交额（万亿）', MKT_AMT, '#60a5fa') ]
+    },
+    options: CHART_DEFAULTS,
+  });
+
+  // 大盘涨跌柱状图（正负着色）
+  const pctColors = PCT_VALS.map(v => v === null ? '#555' : (v >= 0 ? '#ff5555' : '#22c55e'));
+  new Chart(document.getElementById('chartPct'), {
+    type: 'bar',
+    data: {
+      labels: LABELS,
+      datasets: [{
+        label: '上证涨跌幅（%）',
+        data: PCT_VALS,
+        backgroundColor: pctColors,
+        borderRadius: 3,
+      }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        annotation: {}
+      },
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        y: {
+          ...CHART_DEFAULTS.scales.y,
+          ticks: {
+            ...CHART_DEFAULTS.scales.y.ticks,
+            callback: v => v + '%',
+          }
+        }
+      }
+    },
+  });
+  </script>
 </body>
 </html>

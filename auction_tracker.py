@@ -178,7 +178,184 @@ def fmt_date_cn(d: date) -> str:
     return f"{d.month:02d}月{d.day:02d}日（{wd}）"
 
 
+def _mean(lst):
+    return sum(lst) / len(lst) if lst else None
+
+
+def build_analysis(records: list[dict]) -> str:
+    """根据历史数据生成分析与策略 HTML 片段。"""
+    auc_recs = [r for r in records if r.get("sh_auction_yi") is not None]
+    mkt_recs = [r for r in records if r.get("market_amount_wan") is not None]
+    close_recs = [r for r in records
+                  if r.get("sh_close") is not None and r.get("sh_pct_chg") is not None]
+
+    if len(auc_recs) < 3:
+        return ""
+
+    sh_vals  = [r["sh_auction_yi"] for r in auc_recs]
+    cyb_vals = [r["cyb_auction_yi"] for r in auc_recs if r.get("cyb_auction_yi") is not None]
+    mkt_vals = [r["market_amount_wan"] for r in mkt_recs]
+
+    # ── 近期均值 vs 历史均值 ───────────────────────────────────────────────────
+    n = len(sh_vals)
+    recent_n  = min(5, n)
+    sh_recent = _mean(sh_vals[-recent_n:])
+    sh_all    = _mean(sh_vals)
+    sh_ratio  = sh_recent / sh_all if sh_all else 1.0
+
+    cyb_recent = _mean(cyb_vals[-recent_n:]) if cyb_vals else None
+    cyb_all    = _mean(cyb_vals) if cyb_vals else None
+    cyb_ratio  = (cyb_recent / cyb_all) if (cyb_recent and cyb_all) else None
+
+    mkt_recent = _mean(mkt_vals[-recent_n:]) if mkt_vals else None
+    mkt_all    = _mean(mkt_vals) if mkt_vals else None
+    mkt_ratio  = (mkt_recent / mkt_all) if (mkt_recent and mkt_all) else None
+
+    # ── 连续方向 ──────────────────────────────────────────────────────────────
+    def trend_str(vals, recent_n=3):
+        if len(vals) < 2:
+            return "数据不足"
+        last = vals[-recent_n:] if len(vals) >= recent_n else vals
+        ups = sum(1 for i in range(1, len(last)) if last[i] > last[i-1])
+        dns = sum(1 for i in range(1, len(last)) if last[i] < last[i-1])
+        if ups > dns:
+            return "持续放量 📈"
+        elif dns > ups:
+            return "持续缩量 📉"
+        return "震荡横盘 ↔"
+
+    sh_trend  = trend_str(sh_vals)
+    cyb_trend = trend_str(cyb_vals) if cyb_vals else "—"
+    mkt_trend = trend_str(mkt_vals) if mkt_vals else "—"
+
+    # ── 创业板 / 上证 比值（风险偏好）────────────────────────────────────────
+    ratio_pts = []
+    for r in auc_recs:
+        if r.get("sh_auction_yi") and r.get("cyb_auction_yi") and r["sh_auction_yi"] > 0:
+            ratio_pts.append(r["cyb_auction_yi"] / r["sh_auction_yi"])
+    ratio_recent = _mean(ratio_pts[-5:]) if len(ratio_pts) >= 5 else _mean(ratio_pts)
+    ratio_all    = _mean(ratio_pts) if ratio_pts else None
+    risk_signal  = ""
+    if ratio_recent and ratio_all:
+        if ratio_recent > ratio_all * 1.05:
+            risk_signal = "创业板/上证比值高于均值，风险偏好上升，成长股相对活跃。"
+        elif ratio_recent < ratio_all * 0.95:
+            risk_signal = "创业板/上证比值低于均值，资金偏向防御，成长股热情不足。"
+        else:
+            risk_signal = "创业板/上证比值接近均值，市场风险偏好中性。"
+
+    # ── 集合竞价 vs 当日涨跌关联 ─────────────────────────────────────────────
+    paired = []
+    auc_map = {r["date"]: r["sh_auction_yi"] for r in auc_recs if r.get("sh_auction_yi")}
+    for r in close_recs:
+        if r["date"] in auc_map:
+            paired.append((auc_map[r["date"]], r["sh_pct_chg"]))
+
+    corr_note = ""
+    if len(paired) >= 5:
+        high_auc = [p for p in paired if p[0] >= _mean([x[0] for x in paired])]
+        low_auc  = [p for p in paired if p[0] <  _mean([x[0] for x in paired])]
+        high_avg_pct = _mean([p[1] for p in high_auc]) if high_auc else 0
+        low_avg_pct  = _mean([p[1] for p in low_auc])  if low_auc  else 0
+        if high_avg_pct > low_avg_pct + 0.1:
+            corr_note = (f"历史数据显示：集合竞价成交额偏高的交易日，当日大盘平均涨幅"
+                         f"<span class='pos'>+{high_avg_pct:.2f}%</span>，"
+                         f"偏低时平均涨幅 <span class='neg'>{low_avg_pct:.2f}%</span>，"
+                         f"集合竞价放量对当日行情有一定正向预示。")
+        elif low_avg_pct > high_avg_pct + 0.1:
+            corr_note = (f"历史数据显示：集合竞价成交额偏高时当日大盘平均"
+                         f"<span class='neg'>{high_avg_pct:.2f}%</span>，"
+                         f"偏低时平均 <span class='pos'>+{low_avg_pct:.2f}%</span>，"
+                         f"近期放量开盘伴随卖压，需注意高开低走风险。")
+        else:
+            corr_note = "集合竞价成交额与当日涨跌相关性尚不显著，需持续观察。"
+
+    # ── 综合策略 ──────────────────────────────────────────────────────────────
+    strategy_items = []
+
+    heat_label = ""
+    if sh_ratio >= 1.15:
+        heat_label = "🔥 近期集合竞价明显放量（高于历史均值 {:.0f}%），市场情绪积极。".format((sh_ratio - 1) * 100)
+        strategy_items.append("集合竞价持续放量，开盘承接力较强，可关注高开强势股的追涨机会，止损设前日低点。")
+    elif sh_ratio <= 0.85:
+        heat_label = "❄️ 近期集合竞价明显缩量（低于历史均值 {:.0f}%），市场观望情绪浓厚。".format((1 - sh_ratio) * 100)
+        strategy_items.append("集合竞价持续缩量，开盘方向不确定性较大，建议轻仓观望，等待放量信号确认方向后再入场。")
+    else:
+        heat_label = "⚖️ 近期集合竞价处于历史均值附近，市场情绪平稳。"
+        strategy_items.append("集合竞价量能平稳，以跟随大盘趋势操作为主，无明显异动时避免追高。")
+
+    if mkt_ratio:
+        if mkt_ratio <= 0.90:
+            strategy_items.append("全市场成交额萎缩，流动性不足，趋势性行情难以持续，以高抛低吸为主。")
+        elif mkt_ratio >= 1.10:
+            strategy_items.append("全市场成交额持续放大，资金活跃度提升，趋势行情可延续，持股信心增强。")
+
+    if risk_signal:
+        strategy_items.append(risk_signal)
+
+    if corr_note:
+        strategy_items.append(corr_note)
+
+    # ── 当日最新竞价数据摘要 ─────────────────────────────────────────────────
+    latest_auc = auc_recs[-1]
+    latest_sh  = latest_auc.get("sh_auction_yi")
+    latest_cyb = latest_auc.get("cyb_auction_yi")
+    latest_date = latest_auc["date"]
+
+    summary_parts = []
+    if latest_sh is not None:
+        vs_avg = (latest_sh / sh_all - 1) * 100 if sh_all else 0
+        sign = "+" if vs_avg >= 0 else ""
+        summary_parts.append(
+            f"上证集合竞价 <strong class='{'pos' if vs_avg >= 0 else 'neg'}'>"
+            f"{latest_sh:.2f}亿</strong>（{sign}{vs_avg:.1f}% vs 历史均值）"
+        )
+    if latest_cyb is not None and cyb_all:
+        vs_avg = (latest_cyb / cyb_all - 1) * 100
+        sign = "+" if vs_avg >= 0 else ""
+        summary_parts.append(
+            f"创业板集合竞价 <strong class='{'pos' if vs_avg >= 0 else 'neg'}'>"
+            f"{latest_cyb:.2f}亿</strong>（{sign}{vs_avg:.1f}% vs 历史均值）"
+        )
+
+    summary_html = "、".join(summary_parts) if summary_parts else ""
+
+    # ── 组装 HTML ─────────────────────────────────────────────────────────────
+    items_html = "".join(f"<li>{s}</li>" for s in strategy_items)
+    return f"""
+<div class="analysis-wrap">
+  <div class="analysis-block">
+    <div class="an-title">📊 趋势速览</div>
+    <div class="an-grid">
+      <div class="an-card">
+        <div class="an-label">集合竞价上证</div>
+        <div class="an-val">{sh_trend}</div>
+        <div class="an-sub">近{recent_n}日均值 {sh_recent:.1f}亿 vs 历史 {sh_all:.1f}亿</div>
+      </div>
+      <div class="an-card">
+        <div class="an-label">集合竞价创业板</div>
+        <div class="an-val">{cyb_trend}</div>
+        <div class="an-sub">近{recent_n}日均值 {f"{cyb_recent:.1f}亿" if cyb_recent else "—"} vs 历史 {f"{cyb_all:.1f}亿" if cyb_all else "—"}</div>
+      </div>
+      <div class="an-card">
+        <div class="an-label">沪深两市成交额</div>
+        <div class="an-val">{mkt_trend}</div>
+        <div class="an-sub">近{recent_n}日均值 {f"{mkt_recent:.2f}万亿" if mkt_recent else "—"} vs 历史 {f"{mkt_all:.2f}万亿" if mkt_all else "—"}</div>
+      </div>
+    </div>
+  </div>
+  <div class="analysis-block">
+    <div class="an-title">🧭 策略参考</div>
+    <p class="heat-label">{heat_label}</p>
+    {"<p class='summary-p'>最新（" + latest_date + "）：" + summary_html + "</p>" if summary_html else ""}
+    <ul class="strategy-list">{items_html}</ul>
+    <p class="disclaimer">⚠️ 以上分析仅供参考，不构成投资建议。</p>
+  </div>
+</div>"""
+
+
 def render_html(records: list[dict]):
+    # ── 表格行 ────────────────────────────────────────────────────────────────
     rows_html = ""
     for i, rec in enumerate(records, 1):
         d = date.fromisoformat(rec["date"])
@@ -216,13 +393,37 @@ def render_html(records: list[dict]):
           <td>{market_cell}</td>
         </tr>"""
 
+    # ── 折线图数据（JSON）─────────────────────────────────────────────────────
+    import json as _json
+
+    chart_dates, sh_auc, cyb_auc, mkt_amt, close_vals, pct_vals = [], [], [], [], [], []
+    for rec in records:
+        d_str = rec["date"]
+        chart_dates.append(d_str[5:])        # MM-DD
+        sh_auc.append(rec.get("sh_auction_yi"))
+        cyb_auc.append(rec.get("cyb_auction_yi"))
+        mkt_amt.append(rec.get("market_amount_wan"))
+        close_vals.append(rec.get("sh_close"))
+        pct_vals.append(rec.get("sh_pct_chg"))
+
+    dates_js    = _json.dumps(chart_dates,  ensure_ascii=False)
+    sh_auc_js   = _json.dumps(sh_auc,       ensure_ascii=False)
+    cyb_auc_js  = _json.dumps(cyb_auc,      ensure_ascii=False)
+    mkt_amt_js  = _json.dumps(mkt_amt,      ensure_ascii=False)
+    pct_js      = _json.dumps(pct_vals,     ensure_ascii=False)
+
+    # ── 分析与策略 ────────────────────────────────────────────────────────────
+    analysis_html = build_analysis(records)
+
     updated_at = datetime.now(CST).strftime("%Y-%m-%d %H:%M")
+
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>集合竞价 &amp; 大盘数据</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{
@@ -246,7 +447,99 @@ def render_html(records: list[dict]):
       color: #666;
       margin-bottom: 28px;
     }}
-    .wrap {{ max-width: 900px; margin: 0 auto; overflow-x: auto; }}
+    .wrap {{ max-width: 960px; margin: 0 auto; }}
+
+    /* ── 折线图 ── */
+    .charts-section {{ margin-bottom: 36px; }}
+    .section-title {{
+      font-size: 1rem; font-weight: 700; color: #cdd9e5;
+      margin-bottom: 16px; padding-left: 4px;
+      border-left: 3px solid #3b82f6;
+      padding-left: 10px;
+    }}
+    .chart-grid {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }}
+    .chart-grid.single {{ grid-template-columns: 1fr; }}
+    .chart-box {{
+      background: #161b22;
+      border-radius: 12px;
+      padding: 20px 20px 12px;
+      box-shadow: 0 0 24px rgba(0,0,0,.4);
+    }}
+    .chart-box h3 {{
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #8b949e;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }}
+    .chart-box canvas {{ max-height: 220px; }}
+
+    /* ── 分析区 ── */
+    .analysis-wrap {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 36px;
+    }}
+    .analysis-block {{
+      background: #161b22;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 0 24px rgba(0,0,0,.4);
+    }}
+    .an-title {{
+      font-size: 0.95rem; font-weight: 700;
+      color: #cdd9e5; margin-bottom: 14px;
+    }}
+    .an-grid {{
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+    }}
+    .an-card {{
+      background: #0d1117; border-radius: 8px;
+      padding: 12px 10px; text-align: center;
+    }}
+    .an-label {{ font-size: 0.7rem; color: #666; margin-bottom: 6px; }}
+    .an-val {{ font-size: 0.92rem; font-weight: 700; color: #e6edf3; margin-bottom: 4px; }}
+    .an-sub {{ font-size: 0.68rem; color: #555; line-height: 1.4; }}
+    .heat-label {{
+      font-size: 0.88rem; color: #e6edf3;
+      margin-bottom: 10px; line-height: 1.6;
+    }}
+    .summary-p {{
+      font-size: 0.82rem; color: #8b949e;
+      margin-bottom: 12px; line-height: 1.6;
+    }}
+    .strategy-list {{
+      list-style: none; padding: 0;
+    }}
+    .strategy-list li {{
+      font-size: 0.82rem; color: #adbac7;
+      padding: 6px 0 6px 16px;
+      border-bottom: 1px solid #21262d;
+      line-height: 1.6;
+      position: relative;
+    }}
+    .strategy-list li::before {{
+      content: "›";
+      position: absolute; left: 0;
+      color: #3b82f6; font-weight: 700;
+    }}
+    .strategy-list li:last-child {{ border-bottom: none; }}
+    .disclaimer {{
+      font-size: 0.72rem; color: #444;
+      margin-top: 12px;
+    }}
+    .pos {{ color: #ff5555; font-weight: 700; }}
+    .neg {{ color: #22c55e; font-weight: 700; }}
+
+    /* ── 数据表 ── */
+    .table-section {{ margin-bottom: 0; }}
     table {{
       width: 100%;
       border-collapse: collapse;
@@ -258,10 +551,8 @@ def render_html(records: list[dict]):
     thead tr {{ background: #0f2137; }}
     thead th {{
       padding: 14px 10px;
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: #cdd9e5;
-      text-align: center;
+      font-size: 0.85rem; font-weight: 700;
+      color: #cdd9e5; text-align: center;
       white-space: nowrap;
       border-bottom: 2px solid #21262d;
     }}
@@ -270,33 +561,171 @@ def render_html(records: list[dict]):
     tbody tr:last-child {{ border-bottom: none; }}
     tbody tr:hover {{ background: #1c2128; }}
     tbody td {{
-      padding: 12px 10px;
-      font-size: 0.88rem;
-      text-align: center;
-      white-space: nowrap;
+      padding: 12px 10px; font-size: 0.88rem;
+      text-align: center; white-space: nowrap;
     }}
     td.red {{ color: #ff8888; font-weight: 600; }}
+
+    @media (max-width: 640px) {{
+      .chart-grid {{ grid-template-columns: 1fr; }}
+      .analysis-wrap {{ grid-template-columns: 1fr; }}
+      .an-grid {{ grid-template-columns: 1fr; }}
+    }}
   </style>
 </head>
 <body>
-  <h1>集合竞价 &amp; 大盘数据</h1>
-  <p class="meta">数据源: 腾讯行情 &nbsp;|&nbsp; 更新: {updated_at}</p>
   <div class="wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>序号</th>
-          <th>日期</th>
-          <th class="red">集合竞价上证</th>
-          <th class="red">集合竞价创业板</th>
-          <th>沪深两市成交额</th>
-          <th>大盘涨跌情况</th>
-        </tr>
-      </thead>
-      <tbody>{rows_html}
-      </tbody>
-    </table>
+    <h1>集合竞价 &amp; 大盘数据</h1>
+    <p class="meta">数据源: 腾讯行情 &nbsp;|&nbsp; 每交易日 09:26 &amp; 15:15 自动更新 &nbsp;|&nbsp; 最后更新: {updated_at}</p>
+
+    <!-- 折线图 -->
+    <div class="charts-section">
+      <div class="section-title">折线图走势</div>
+      <div class="chart-grid">
+        <div class="chart-box">
+          <h3>集合竞价成交额（亿元）</h3>
+          <canvas id="chartAuction"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3>沪深两市成交额（万亿元）</h3>
+          <canvas id="chartMkt"></canvas>
+        </div>
+      </div>
+      <div class="chart-grid single">
+        <div class="chart-box">
+          <h3>大盘涨跌幅（%）</h3>
+          <canvas id="chartPct"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 分析与策略 -->
+    <div class="section-title" style="margin-bottom:16px">分析与策略</div>
+    {analysis_html}
+
+    <!-- 数据明细表 -->
+    <div class="section-title" style="margin-bottom:16px">数据明细</div>
+    <div class="table-section" style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>序号</th>
+            <th>日期</th>
+            <th class="red">集合竞价上证</th>
+            <th class="red">集合竞价创业板</th>
+            <th>沪深两市成交额</th>
+            <th>大盘涨跌情况</th>
+          </tr>
+        </thead>
+        <tbody>{rows_html}
+        </tbody>
+      </table>
+    </div>
   </div>
+
+  <script>
+  const LABELS   = {dates_js};
+  const SH_AUC   = {sh_auc_js};
+  const CYB_AUC  = {cyb_auc_js};
+  const MKT_AMT  = {mkt_amt_js};
+  const PCT_VALS = {pct_js};
+
+  const CHART_DEFAULTS = {{
+    responsive: true,
+    maintainAspectRatio: true,
+    interaction: {{ mode: 'index', intersect: false }},
+    plugins: {{
+      legend: {{ labels: {{ color: '#8b949e', font: {{ size: 12 }} }} }},
+      tooltip: {{
+        backgroundColor: '#1c2128',
+        titleColor: '#cdd9e5',
+        bodyColor: '#adbac7',
+        borderColor: '#30363d',
+        borderWidth: 1,
+      }}
+    }},
+    scales: {{
+      x: {{
+        ticks: {{ color: '#555', maxRotation: 45, font: {{ size: 10 }} }},
+        grid: {{ color: '#1c2128' }},
+      }},
+      y: {{
+        ticks: {{ color: '#555', font: {{ size: 11 }} }},
+        grid: {{ color: '#1c2128' }},
+      }}
+    }}
+  }};
+
+  function lineDataset(label, data, color, dashed=false) {{
+    return {{
+      label,
+      data,
+      borderColor: color,
+      backgroundColor: color + '22',
+      borderWidth: 2,
+      borderDash: dashed ? [5,4] : [],
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      tension: 0.3,
+      spanGaps: true,
+    }};
+  }}
+
+  // 集合竞价折线图
+  new Chart(document.getElementById('chartAuction'), {{
+    type: 'line',
+    data: {{
+      labels: LABELS,
+      datasets: [
+        lineDataset('集合竞价上证（亿）', SH_AUC,  '#ff8888'),
+        lineDataset('集合竞价创业板（亿）', CYB_AUC, '#fbbf24'),
+      ]
+    }},
+    options: CHART_DEFAULTS,
+  }});
+
+  // 成交额折线图
+  new Chart(document.getElementById('chartMkt'), {{
+    type: 'line',
+    data: {{
+      labels: LABELS,
+      datasets: [ lineDataset('沪深成交额（万亿）', MKT_AMT, '#60a5fa') ]
+    }},
+    options: CHART_DEFAULTS,
+  }});
+
+  // 大盘涨跌柱状图（正负着色）
+  const pctColors = PCT_VALS.map(v => v === null ? '#555' : (v >= 0 ? '#ff5555' : '#22c55e'));
+  new Chart(document.getElementById('chartPct'), {{
+    type: 'bar',
+    data: {{
+      labels: LABELS,
+      datasets: [{{
+        label: '上证涨跌幅（%）',
+        data: PCT_VALS,
+        backgroundColor: pctColors,
+        borderRadius: 3,
+      }}]
+    }},
+    options: {{
+      ...CHART_DEFAULTS,
+      plugins: {{
+        ...CHART_DEFAULTS.plugins,
+        annotation: {{}}
+      }},
+      scales: {{
+        ...CHART_DEFAULTS.scales,
+        y: {{
+          ...CHART_DEFAULTS.scales.y,
+          ticks: {{
+            ...CHART_DEFAULTS.scales.y.ticks,
+            callback: v => v + '%',
+          }}
+        }}
+      }}
+    }},
+  }});
+  </script>
 </body>
 </html>"""
 
