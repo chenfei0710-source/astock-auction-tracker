@@ -428,8 +428,8 @@ def render_html(records: list[dict]):
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{
       font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-      background: #0d1117;
-      color: #e6edf3;
+      background: #f4f6f9;
+      color: #1a202c;
       min-height: 100vh;
       padding: 32px 16px 60px;
     }}
@@ -437,14 +437,14 @@ def render_html(records: list[dict]):
       text-align: center;
       font-size: 1.5rem;
       font-weight: 800;
-      color: #fff;
+      color: #1a202c;
       margin-bottom: 4px;
       letter-spacing: 3px;
     }}
     .meta {{
       text-align: center;
       font-size: 0.78rem;
-      color: #666;
+      color: #888;
       margin-bottom: 28px;
     }}
     .wrap {{ max-width: 960px; margin: 0 auto; }}
@@ -452,8 +452,8 @@ def render_html(records: list[dict]):
     /* ── 折线图 ── */
     .charts-section {{ margin-bottom: 36px; }}
     .section-title {{
-      font-size: 1rem; font-weight: 700; color: #cdd9e5;
-      margin-bottom: 16px; padding-left: 4px;
+      font-size: 1rem; font-weight: 700; color: #2d3748;
+      margin-bottom: 16px;
       border-left: 3px solid #3b82f6;
       padding-left: 10px;
     }}
@@ -465,15 +465,15 @@ def render_html(records: list[dict]):
     }}
     .chart-grid.single {{ grid-template-columns: 1fr; }}
     .chart-box {{
-      background: #161b22;
+      background: #fff;
       border-radius: 12px;
       padding: 20px 20px 12px;
-      box-shadow: 0 0 24px rgba(0,0,0,.4);
+      box-shadow: 0 1px 8px rgba(0,0,0,.08);
     }}
     .chart-box h3 {{
       font-size: 0.82rem;
       font-weight: 600;
-      color: #8b949e;
+      color: #718096;
       margin-bottom: 12px;
       text-transform: uppercase;
       letter-spacing: 1px;
@@ -488,40 +488,40 @@ def render_html(records: list[dict]):
       margin-bottom: 36px;
     }}
     .analysis-block {{
-      background: #161b22;
+      background: #fff;
       border-radius: 12px;
       padding: 20px;
-      box-shadow: 0 0 24px rgba(0,0,0,.4);
+      box-shadow: 0 1px 8px rgba(0,0,0,.08);
     }}
     .an-title {{
       font-size: 0.95rem; font-weight: 700;
-      color: #cdd9e5; margin-bottom: 14px;
+      color: #2d3748; margin-bottom: 14px;
     }}
     .an-grid {{
       display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
     }}
     .an-card {{
-      background: #0d1117; border-radius: 8px;
+      background: #f7fafc; border-radius: 8px;
       padding: 12px 10px; text-align: center;
     }}
-    .an-label {{ font-size: 0.7rem; color: #666; margin-bottom: 6px; }}
-    .an-val {{ font-size: 0.92rem; font-weight: 700; color: #e6edf3; margin-bottom: 4px; }}
-    .an-sub {{ font-size: 0.68rem; color: #555; line-height: 1.4; }}
+    .an-label {{ font-size: 0.7rem; color: #a0aec0; margin-bottom: 6px; }}
+    .an-val {{ font-size: 0.92rem; font-weight: 700; color: #2d3748; margin-bottom: 4px; }}
+    .an-sub {{ font-size: 0.68rem; color: #a0aec0; line-height: 1.4; }}
     .heat-label {{
-      font-size: 0.88rem; color: #e6edf3;
+      font-size: 0.88rem; color: #2d3748;
       margin-bottom: 10px; line-height: 1.6;
     }}
     .summary-p {{
-      font-size: 0.82rem; color: #8b949e;
+      font-size: 0.82rem; color: #718096;
       margin-bottom: 12px; line-height: 1.6;
     }}
     .strategy-list {{
       list-style: none; padding: 0;
     }}
     .strategy-list li {{
-      font-size: 0.82rem; color: #adbac7;
+      font-size: 0.82rem; color: #4a5568;
       padding: 6px 0 6px 16px;
-      border-bottom: 1px solid #21262d;
+      border-bottom: 1px solid #edf2f7;
       line-height: 1.6;
       position: relative;
     }}
@@ -532,39 +532,40 @@ def render_html(records: list[dict]):
     }}
     .strategy-list li:last-child {{ border-bottom: none; }}
     .disclaimer {{
-      font-size: 0.72rem; color: #444;
+      font-size: 0.72rem; color: #a0aec0;
       margin-top: 12px;
     }}
-    .pos {{ color: #ff5555; font-weight: 700; }}
-    .neg {{ color: #22c55e; font-weight: 700; }}
+    .pos {{ color: #e53e3e; font-weight: 700; }}
+    .neg {{ color: #38a169; font-weight: 700; }}
 
     /* ── 数据表 ── */
     .table-section {{ margin-bottom: 0; }}
     table {{
       width: 100%;
       border-collapse: collapse;
-      background: #161b22;
+      background: #fff;
       border-radius: 12px;
       overflow: hidden;
-      box-shadow: 0 0 40px rgba(0,0,0,.5);
+      box-shadow: 0 1px 8px rgba(0,0,0,.08);
     }}
-    thead tr {{ background: #0f2137; }}
+    thead tr {{ background: #eef2ff; }}
     thead th {{
       padding: 14px 10px;
       font-size: 0.85rem; font-weight: 700;
-      color: #cdd9e5; text-align: center;
+      color: #2d3748; text-align: center;
       white-space: nowrap;
-      border-bottom: 2px solid #21262d;
+      border-bottom: 2px solid #e2e8f0;
     }}
-    thead th.red {{ color: #ff8888; }}
-    tbody tr {{ border-bottom: 1px solid #21262d; transition: background .15s; }}
+    thead th.red {{ color: #c53030; }}
+    tbody tr {{ border-bottom: 1px solid #edf2f7; transition: background .15s; }}
     tbody tr:last-child {{ border-bottom: none; }}
-    tbody tr:hover {{ background: #1c2128; }}
+    tbody tr:hover {{ background: #f7fafc; }}
     tbody td {{
       padding: 12px 10px; font-size: 0.88rem;
       text-align: center; white-space: nowrap;
+      color: #2d3748;
     }}
-    td.red {{ color: #ff8888; font-weight: 600; }}
+    td.red {{ color: #c53030; font-weight: 600; }}
 
     @media (max-width: 640px) {{
       .chart-grid {{ grid-template-columns: 1fr; }}
@@ -577,6 +578,25 @@ def render_html(records: list[dict]):
   <div class="wrap">
     <h1>集合竞价 &amp; 大盘数据</h1>
     <p class="meta">数据源: 腾讯行情 &nbsp;|&nbsp; 每交易日 09:26 &amp; 15:15 自动更新 &nbsp;|&nbsp; 最后更新: {updated_at}</p>
+
+    <!-- 数据明细表 -->
+    <div class="section-title" style="margin-bottom:16px">数据明细</div>
+    <div class="table-section" style="overflow-x:auto;margin-bottom:36px">
+      <table>
+        <thead>
+          <tr>
+            <th>序号</th>
+            <th>日期</th>
+            <th class="red">集合竞价上证</th>
+            <th class="red">集合竞价创业板</th>
+            <th>沪深两市成交额</th>
+            <th>大盘涨跌情况</th>
+          </tr>
+        </thead>
+        <tbody>{rows_html}
+        </tbody>
+      </table>
+    </div>
 
     <!-- 折线图 -->
     <div class="charts-section">
@@ -602,25 +622,6 @@ def render_html(records: list[dict]):
     <!-- 分析与策略 -->
     <div class="section-title" style="margin-bottom:16px">分析与策略</div>
     {analysis_html}
-
-    <!-- 数据明细表 -->
-    <div class="section-title" style="margin-bottom:16px">数据明细</div>
-    <div class="table-section" style="overflow-x:auto">
-      <table>
-        <thead>
-          <tr>
-            <th>序号</th>
-            <th>日期</th>
-            <th class="red">集合竞价上证</th>
-            <th class="red">集合竞价创业板</th>
-            <th>沪深两市成交额</th>
-            <th>大盘涨跌情况</th>
-          </tr>
-        </thead>
-        <tbody>{rows_html}
-        </tbody>
-      </table>
-    </div>
   </div>
 
   <script>
@@ -635,23 +636,23 @@ def render_html(records: list[dict]):
     maintainAspectRatio: true,
     interaction: {{ mode: 'index', intersect: false }},
     plugins: {{
-      legend: {{ labels: {{ color: '#8b949e', font: {{ size: 12 }} }} }},
+      legend: {{ labels: {{ color: '#4a5568', font: {{ size: 12 }} }} }},
       tooltip: {{
-        backgroundColor: '#1c2128',
-        titleColor: '#cdd9e5',
-        bodyColor: '#adbac7',
-        borderColor: '#30363d',
+        backgroundColor: '#fff',
+        titleColor: '#2d3748',
+        bodyColor: '#4a5568',
+        borderColor: '#e2e8f0',
         borderWidth: 1,
       }}
     }},
     scales: {{
       x: {{
-        ticks: {{ color: '#555', maxRotation: 45, font: {{ size: 10 }} }},
-        grid: {{ color: '#1c2128' }},
+        ticks: {{ color: '#a0aec0', maxRotation: 45, font: {{ size: 10 }} }},
+        grid: {{ color: '#edf2f7' }},
       }},
       y: {{
-        ticks: {{ color: '#555', font: {{ size: 11 }} }},
-        grid: {{ color: '#1c2128' }},
+        ticks: {{ color: '#a0aec0', font: {{ size: 11 }} }},
+        grid: {{ color: '#edf2f7' }},
       }}
     }}
   }};
