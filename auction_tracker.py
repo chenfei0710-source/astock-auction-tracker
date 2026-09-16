@@ -372,13 +372,14 @@ def render_html(records: list[dict]):
         mkt_str = f"{mkt:.2f}万亿" if mkt   is not None else ""
 
         if close is not None and pct is not None:
-            pct_color = "#ff4444" if pct > 0 else ("#22c55e" if pct < 0 else "#aaa")
+            pct_color = "#e53e3e" if pct > 0 else ("#38a169" if pct < 0 else "#aaa")
             sign = "+" if pct > 0 else ""
+            arrow = " ↑" if pct > 0 else (" ↓" if pct < 0 else "")
             market_cell = (
-                f'<span style="color:#ff8888;font-weight:700">'
+                f'<span style="color:#c53030;font-weight:700">'
                 f'上证{close:.2f}</span>&nbsp;'
                 f'<span style="color:{pct_color};font-weight:700">'
-                f'{sign}{pct:.2f}%</span>'
+                f'{sign}{pct:.2f}%{arrow}</span>'
             )
         else:
             market_cell = ""
