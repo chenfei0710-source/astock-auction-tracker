@@ -83,66 +83,86 @@
     "date": "2026-09-02",
     "sh_close": 3941.39,
     "sh_pct_chg": -0.97,
-    "market_amount_wan": 1.79
+    "market_amount_wan": 1.79,
+    "sh_auction_yi": 85.24,
+    "cyb_auction_yi": 45.12
   },
   {
     "date": "2026-09-03",
     "sh_close": 3942.09,
     "sh_pct_chg": 0.02,
-    "market_amount_wan": 1.76
+    "market_amount_wan": 1.76,
+    "sh_auction_yi": 65.91,
+    "cyb_auction_yi": 31.11
   },
   {
     "date": "2026-09-04",
     "sh_close": 3930.12,
     "sh_pct_chg": -0.3,
-    "market_amount_wan": 2.03
+    "market_amount_wan": 2.03,
+    "sh_auction_yi": 69.3,
+    "cyb_auction_yi": 33.11
   },
   {
     "date": "2026-09-07",
     "sh_close": 3932.7,
     "sh_pct_chg": 0.07,
-    "market_amount_wan": 1.95
+    "market_amount_wan": 1.95,
+    "sh_auction_yi": 75.85,
+    "cyb_auction_yi": 39.1
   },
   {
     "date": "2026-09-08",
     "sh_close": 3940.55,
     "sh_pct_chg": 0.2,
-    "market_amount_wan": 1.96
+    "market_amount_wan": 1.96,
+    "sh_auction_yi": 64.64,
+    "cyb_auction_yi": 29.7
   },
   {
     "date": "2026-09-09",
     "sh_close": 3951.51,
     "sh_pct_chg": 0.28,
-    "market_amount_wan": 1.86
+    "market_amount_wan": 1.86,
+    "sh_auction_yi": 76.61,
+    "cyb_auction_yi": 40.0
   },
   {
     "date": "2026-09-10",
     "sh_close": 3934.4,
     "sh_pct_chg": -0.43,
-    "market_amount_wan": 1.65
+    "market_amount_wan": 1.65,
+    "sh_auction_yi": 64.65,
+    "cyb_auction_yi": 31.13
   },
   {
     "date": "2026-09-11",
     "sh_close": 3888.11,
     "sh_pct_chg": -1.18,
-    "market_amount_wan": 1.97
+    "market_amount_wan": 1.97,
+    "sh_auction_yi": 85.76,
+    "cyb_auction_yi": 34.09
   },
   {
     "date": "2026-09-14",
     "sh_close": 3885.33,
     "sh_pct_chg": -0.07,
-    "market_amount_wan": 1.63
+    "market_amount_wan": 1.63,
+    "sh_auction_yi": 71.87,
+    "cyb_auction_yi": 36.69
   },
   {
     "date": "2026-09-15",
     "sh_close": 3864.28,
     "sh_pct_chg": -0.54,
-    "market_amount_wan": 1.61
+    "market_amount_wan": 1.61,
+    "sh_auction_yi": 56.14,
+    "cyb_auction_yi": 26.21
   },
   {
     "date": "2026-09-16",
-    "sh_auction_yi": 66.13,
-    "cyb_auction_yi": 16.62,
+    "sh_auction_yi": 51.02,
+    "cyb_auction_yi": 22.16,
     "market_amount_wan": null,
     "sh_close": null,
     "sh_pct_chg": null
