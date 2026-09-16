@@ -202,6 +202,23 @@
     .vol-val { font-size: 1rem; font-weight: 700; color: #2d3748; margin-bottom: 2px; }
     .vol-sub { font-size: 0.68rem; color: #a0aec0; }
     .neutral-text { color: #718096; }
+    .sum-ops {
+      margin-top: 18px; border-top: 1px solid #edf2f7; padding-top: 16px;
+    }
+    .ops-list {
+      list-style: none; padding: 0; margin: 0;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    }
+    .ops-list li {
+      font-size: 0.82rem; color: #4a5568;
+      padding: 7px 8px 7px 0; border-bottom: 1px solid #edf2f7;
+      line-height: 1.6; display: flex; align-items: baseline; gap: 7px;
+    }
+    .ops-list li:nth-last-child(-n+2) { border-bottom: none; }
+    .op-tag-bull  { background:#fff5f5; color:#c53030; border:1px solid #feb2b2; border-radius:5px; padding:1px 7px; font-size:0.72rem; font-weight:700; white-space:nowrap; flex-shrink:0; }
+    .op-tag-bear  { background:#f0fff4; color:#276749; border:1px solid #9ae6b4; border-radius:5px; padding:1px 7px; font-size:0.72rem; font-weight:700; white-space:nowrap; flex-shrink:0; }
+    .op-tag-mid   { background:#ebf8ff; color:#2b6cb0; border:1px solid #90cdf4; border-radius:5px; padding:1px 7px; font-size:0.72rem; font-weight:700; white-space:nowrap; flex-shrink:0; }
+    .op-tag-watch { background:#fffff0; color:#975a16; border:1px solid #f6e05e; border-radius:5px; padding:1px 7px; font-size:0.72rem; font-weight:700; white-space:nowrap; flex-shrink:0; }
 
     @media (max-width: 640px) {
       .chart-grid { grid-template-columns: 1fr; }
@@ -209,13 +226,16 @@
       .an-grid { grid-template-columns: 1fr; }
       .sum-body { grid-template-columns: 1fr; }
       .vol-row { grid-template-columns: 1fr 1fr; }
+      .ops-list { grid-template-columns: 1fr; }
+      .ops-list li:nth-last-child(-n+2) { border-bottom: 1px solid #edf2f7; }
+      .ops-list li:last-child { border-bottom: none; }
     }
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>集合竞价 &amp; 大盘数据</h1>
-    <p class="meta">数据源: 腾讯行情 &nbsp;|&nbsp; 每交易日 09:26 &amp; 15:15 自动更新 &nbsp;|&nbsp; 最后更新: 2026-09-16 15:35</p>
+    <p class="meta">数据源: 腾讯行情 &nbsp;|&nbsp; 每交易日 09:26 &amp; 15:15 自动更新 &nbsp;|&nbsp; 最后更新: 2026-09-16 15:38</p>
 
     <!-- 数据明细表 -->
     <div class="section-title" style="margin-bottom:16px">数据明细</div>
@@ -462,7 +482,11 @@
       <p class="neg" style="font-size:0.88rem;line-height:1.6">短期趋势偏空，价格重心持续下移。</p>
     </div>
   </div>
-  <p class="disclaimer" style="margin-top:10px">⚠️ 以上为技术面参考，不构成投资建议。</p>
+  <div class="sum-ops">
+    <div class="sum-block-title">操作建议</div>
+    <ul class="ops-list"><li><span class="op-tag-bear">减仓/空仓</span>价格在均线下方，空头压制，建议空仓或仓位降至最低，等待企稳信号。</li><li><span class="op-tag-bull">做多</span>放量上涨，可积极参与，追涨时关注涨停板或强势股。</li><li><span class="op-tag-bear">警示</span>当前价格已接近近期支撑 3864.28，若跌破需果断止损离场。</li><li><span class="op-tag-watch">提示</span>明日开盘关注集合竞价额：若高于 79亿（历史均值）视为做多积极，可顺势参与；若明显低于均值则谨慎追多。</li></ul>
+  </div>
+  <p class="disclaimer" style="margin-top:10px">⚠️ 以上为技术面参考，不构成投资建议，请结合自身风险偏好决策。</p>
 </div>
 
     <!-- 分析与策略 -->

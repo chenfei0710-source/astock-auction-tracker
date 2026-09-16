@@ -461,6 +461,64 @@ def build_market_summary(records: list[dict]) -> str:
     support_str   = f"{recent_low:.2f}"
     resistance_str = f"{recent_high:.2f}"
 
+    # ── 操作建议 ─────────────────────────────────────────────────────────────
+    ops = []
+
+    # 仓位基准
+    above_ma5  = ma5  and td_close > ma5
+    above_ma10 = ma10 and td_close > ma10
+    ma_score   = sum([bool(above_ma5), bool(above_ma10),
+                      bool(ma20 and td_close > ma20)])   # 0-3
+
+    if ma_score == 3:
+        ops.append(("多", "价格站上 MA5/MA10/MA20，多头排列，可维持正常仓位，持股待涨为主。"))
+    elif ma_score == 2:
+        ops.append(("中", "价格站上多数均线，趋势偏多但尚未完全确认，维持半仓或轻仓，等待回踩均线后加仓。"))
+    elif ma_score == 1:
+        ops.append(("轻", "仅站上部分均线，结构偏弱，建议轻仓操作，以观望为主。"))
+    else:
+        ops.append(("空", "价格在均线下方，空头压制，建议空仓或仓位降至最低，等待企稳信号。"))
+
+    # 量价建议
+    if td_mkt and mkt_avg5:
+        if td_pct > 0 and td_mkt >= mkt_avg5 * 1.05:
+            ops.append(("多", "放量上涨，可积极参与，追涨时关注涨停板或强势股。"))
+        elif td_pct > 0 and td_mkt < mkt_avg5 * 0.95:
+            ops.append(("观", "缩量反弹，可逢低布局低估值品种，但不宜重仓追高。"))
+        elif td_pct < 0 and td_mkt >= mkt_avg5 * 1.05:
+            ops.append(("空", "放量下跌，卖压较重，建议减仓止损，避免越跌越买。"))
+        elif td_pct < 0 and td_mkt < mkt_avg5 * 0.95:
+            ops.append(("观", "缩量调整，无需恐慌，持有优质仓位等待方向选择，切忌追杀。"))
+
+    # 支撑压力操作
+    dist_to_support    = round((td_close - recent_low)  / td_close * 100, 1)
+    dist_to_resistance = round((recent_high - td_close) / td_close * 100, 1)
+    if dist_to_support <= 1.0:
+        ops.append(("警", f"当前价格已接近近期支撑 {support_str}，若跌破需果断止损离场。"))
+    elif dist_to_resistance <= 1.5:
+        ops.append(("谨", f"当前价格接近近期压力 {resistance_str}，持仓可考虑部分止盈，不宜此位追多。"))
+    else:
+        ops.append(("参", f"支撑 {support_str}（距今 {dist_to_support}%），压力 {resistance_str}（距今 {dist_to_resistance}%），当前处于中间区域，以均线为操作参考。"))
+
+    # 明日集合竞价参考
+    ops.append(("提", f"明日开盘关注集合竞价额：若高于 {(auc_avg or 70):.0f}亿（历史均值）视为做多积极，可顺势参与；若明显低于均值则谨慎追多。"))
+
+    tag_map = {
+        "多": ("op-tag-bull",  "做多"),
+        "中": ("op-tag-mid",   "中性偏多"),
+        "轻": ("op-tag-mid",   "轻仓"),
+        "空": ("op-tag-bear",  "减仓/空仓"),
+        "观": ("op-tag-watch", "观望"),
+        "警": ("op-tag-bear",  "警示"),
+        "谨": ("op-tag-watch", "止盈参考"),
+        "参": ("op-tag-mid",   "参考"),
+        "提": ("op-tag-watch", "提示"),
+    }
+    ops_html = ""
+    for key, text in ops:
+        cls, label = tag_map.get(key, ("op-tag-mid", key))
+        ops_html += f'<li><span class="{cls}">{label}</span>{text}</li>'
+
     # ── 综合观点 ─────────────────────────────────────────────────────────────
     pct_color = "pos" if td_pct > 0 else ("neg" if td_pct < 0 else "neutral-text")
     sign      = "+" if td_pct > 0 else ""
@@ -468,12 +526,12 @@ def build_market_summary(records: list[dict]) -> str:
 
     streak_html = f'<span class="tag-{"up" if direction>0 else "down"}">{streak_str}</span>' if streak_str else ""
 
-    items = []
-    if vol_signal:  items.append(vol_signal)
-    if auc_signal:  items.append(auc_signal)
-    items.append(trend_judge)
-    items.append(f"近10日参考支撑 <strong>{support_str}</strong>，压力 <strong>{resistance_str}</strong>。")
-    items_html = "".join(f"<li>{s}</li>" for s in items)
+    analysis_items = []
+    if vol_signal:  analysis_items.append(vol_signal)
+    if auc_signal:  analysis_items.append(auc_signal)
+    analysis_items.append(trend_judge)
+    analysis_items.append(f"近10日参考支撑 <strong>{support_str}</strong>，压力 <strong>{resistance_str}</strong>。")
+    items_html = "".join(f"<li>{s}</li>" for s in analysis_items)
 
     return f"""
 <div class="summary-section">
@@ -510,7 +568,11 @@ def build_market_summary(records: list[dict]) -> str:
       <p class="{trend_color}" style="font-size:0.88rem;line-height:1.6">{trend_judge}</p>
     </div>
   </div>
-  <p class="disclaimer" style="margin-top:10px">⚠️ 以上为技术面参考，不构成投资建议。</p>
+  <div class="sum-ops">
+    <div class="sum-block-title">操作建议</div>
+    <ul class="ops-list">{ops_html}</ul>
+  </div>
+  <p class="disclaimer" style="margin-top:10px">⚠️ 以上为技术面参考，不构成投资建议，请结合自身风险偏好决策。</p>
 </div>"""
 
 
@@ -783,6 +845,23 @@ def render_html(records: list[dict]):
     .vol-val {{ font-size: 1rem; font-weight: 700; color: #2d3748; margin-bottom: 2px; }}
     .vol-sub {{ font-size: 0.68rem; color: #a0aec0; }}
     .neutral-text {{ color: #718096; }}
+    .sum-ops {{
+      margin-top: 18px; border-top: 1px solid #edf2f7; padding-top: 16px;
+    }}
+    .ops-list {{
+      list-style: none; padding: 0; margin: 0;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    }}
+    .ops-list li {{
+      font-size: 0.82rem; color: #4a5568;
+      padding: 7px 8px 7px 0; border-bottom: 1px solid #edf2f7;
+      line-height: 1.6; display: flex; align-items: baseline; gap: 7px;
+    }}
+    .ops-list li:nth-last-child(-n+2) {{ border-bottom: none; }}
+    .op-tag-bull  {{ background:#fff5f5; color:#c53030; border:1px solid #feb2b2; border-radius:5px; padding:1px 7px; font-size:0.72rem; font-weight:700; white-space:nowrap; flex-shrink:0; }}
+    .op-tag-bear  {{ background:#f0fff4; color:#276749; border:1px solid #9ae6b4; border-radius:5px; padding:1px 7px; font-size:0.72rem; font-weight:700; white-space:nowrap; flex-shrink:0; }}
+    .op-tag-mid   {{ background:#ebf8ff; color:#2b6cb0; border:1px solid #90cdf4; border-radius:5px; padding:1px 7px; font-size:0.72rem; font-weight:700; white-space:nowrap; flex-shrink:0; }}
+    .op-tag-watch {{ background:#fffff0; color:#975a16; border:1px solid #f6e05e; border-radius:5px; padding:1px 7px; font-size:0.72rem; font-weight:700; white-space:nowrap; flex-shrink:0; }}
 
     @media (max-width: 640px) {{
       .chart-grid {{ grid-template-columns: 1fr; }}
@@ -790,6 +869,9 @@ def render_html(records: list[dict]):
       .an-grid {{ grid-template-columns: 1fr; }}
       .sum-body {{ grid-template-columns: 1fr; }}
       .vol-row {{ grid-template-columns: 1fr 1fr; }}
+      .ops-list {{ grid-template-columns: 1fr; }}
+      .ops-list li:nth-last-child(-n+2) {{ border-bottom: 1px solid #edf2f7; }}
+      .ops-list li:last-child {{ border-bottom: none; }}
     }}
   </style>
 </head>
