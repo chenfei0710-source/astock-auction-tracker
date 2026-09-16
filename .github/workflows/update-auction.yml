@@ -1,0 +1,43 @@
+name: 更新集合竞价数据
+
+on:
+  schedule:
+    - cron: '26 1 * * 1-5'   # 北京时间 09:26 (UTC+8) → 捕获集合竞价
+    - cron: '15 7 * * 1-5'   # 北京时间 15:15 (UTC+8) → 捕获收盘数据
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '手动触发模式: auction（集合竞价） 或 close（收盘）'
+        required: false
+        default: 'close'
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Capture data
+        run: |
+          if [ "${{ github.event.inputs.mode }}" = "auction" ]; then
+            python3 auction_tracker.py --capture-auction
+          elif [ "${{ github.event.schedule }}" = "26 1 * * 1-5" ]; then
+            python3 auction_tracker.py --capture-auction
+          else
+            python3 auction_tracker.py --capture-close
+          fi
+
+      - name: Commit and push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add auction_history.json docs/index.html
+          git diff --cached --quiet || git commit -m "Auto-update: $(TZ=Asia/Shanghai date +'%Y-%m-%d %H:%M') CST"
+          git push
