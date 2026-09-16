@@ -50,7 +50,112 @@ def week_label(dt):
     th = f"สัปดาห์ที่ {week_num} {th_months[dt.month]}"
     return zh, th
 
+# ── 关键词映射：泰语 → 中文标签 ────────────────────────────────────────────
+TH_TAG_MAP = [
+    (r'ลูกค้าใหม่|เปิดบัญชี|หน้าใหม่',        "新客户",  "ลูกค้าใหม่"),
+    (r'ชวนเพื่อน|invite',                      "邀友",    "ชวนเพื่อน"),
+    (r'กองทุน',                                "基金",    "กองทุน"),
+    (r'ทองคำ|ทอง',                             "黄金",    "ทองคำ"),
+    (r'หุ้นสหรัฐ|US|หุ้นอเมริก',              "美股",    "หุ้นสหรัฐฯ"),
+    (r'หุ้นไทย',                               "泰股",    "หุ้นไทย"),
+    (r'ออปชัน|option',                         "期权",    "ออปชัน"),
+    (r'แลกเงิน|FX|เงินตรา|ไดม์เนิน',          "换汇",    "แลกเงิน"),
+    (r'ประกัน|ไดม์ใจ',                         "保险",    "ประกัน"),
+    (r'DCA|สะสม',                              "定投",    "DCA"),
+    (r'Mid.month|midmonth',                    "免佣金日", "Mid-month"),
+    (r'[Pp]ayday|เงินเดือน',                   "发薪日",  "Payday"),
+    (r'คูปอง|coupon|birthday|วันเกิด',         "优惠券",  "คูปอง"),
+    (r'Club|club',                             "会员",    "Club"),
+]
+
+def th_tag(text):
+    for pattern, zh, th in TH_TAG_MAP:
+        if re.search(pattern, text, re.I):
+            return zh, th
+    return "活动", "กิจกรรม"
+
 # ── 解析各平台 ──────────────────────────────────────────────────────────────
+def parse_dime():
+    """用手机 UA 抓取 dime.co.th 活动汇总页，解析 Next.js JSON 内嵌数据"""
+    url = "https://dime.co.th/th/articles/all-dime-promo"
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
+                      "Mobile/15E148 Safari/604.1",
+        "Accept-Language": "th-TH,th;q=0.9,en;q=0.8",
+        "Referer": "https://dime.co.th/",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            html = r.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        log(f"  WARN Dime! fetch failed: {e}")
+        return DIME_ITEMS
+
+    # 提取 Next.js 内嵌 JSON
+    m = re.search(r'<script[^>]*type="application/json"[^>]*>(.*?)</script>', html, re.S)
+    if not m:
+        log("  WARN Dime! JSON not found, using static data")
+        return DIME_ITEMS
+
+    try:
+        import json
+        d = json.loads(m.group(1))
+        content = d["props"]["pageProps"]["articleData"]["content"]
+    except Exception as e:
+        log(f"  WARN Dime! JSON parse failed: {e}")
+        return DIME_ITEMS
+
+    # 提取所有活动链接（คลิก! 锚点）
+    links = re.findall(r'href="(https://dime\.co\.th/[^"]+)"', content)
+    links = list(dict.fromkeys(links))  # 去重保序
+
+    # 提取活动标题（表格第一列 <td> 里的文字）
+    rows = re.findall(r'<tr[^>]*>(.*?)</tr>', content, re.S)
+    cards = []
+    link_idx = 0
+    seen_titles = set()
+
+    for row in rows:
+        cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.S)
+        if len(cells) < 1:
+            continue
+        title_raw = re.sub(r'<[^>]+>', ' ', cells[0])
+        title_raw = re.sub(r'&nbsp;', ' ', title_raw)
+        title_th  = re.sub(r'\s+', ' ', title_raw).strip()
+        if len(title_th) < 5 or title_th in seen_titles:
+            continue
+        seen_titles.add(title_th)
+
+        # 取对应链接
+        url_card = links[link_idx] if link_idx < len(links) else "https://dime.co.th/th/articles/all-dime-promo"
+        link_idx += 1
+
+        # 取日期（第二列包含日期关键词的文字）
+        date_th = ""
+        if len(cells) >= 2:
+            desc_raw = re.sub(r'<[^>]+>', ' ', cells[1])
+            dm = re.search(r'(\d+\s*[ก-๙\.]+.*?(?:69|70|71|2569|2570|2571))', desc_raw)
+            if dm:
+                date_th = re.sub(r'\s+', ' ', dm.group(1)).strip()
+
+        tag_zh, tag_th = th_tag(title_th + " " + url_card)
+        cards.append({
+            "tag_zh": tag_zh, "tag_th": tag_th,
+            "title_th": title_th,
+            "date_th": date_th,
+            "url": url_card,
+        })
+        if len(cards) >= 10:
+            break
+
+    if not cards:
+        log("  WARN Dime! parsed 0 cards, using static data")
+        return DIME_ITEMS
+
+    log(f"  Dime!: {len(cards)} 条（实时抓取）")
+    return cards
+
 def parse_invx(html):
     cards = []
     pairs = re.findall(
@@ -734,8 +839,8 @@ def main(no_deploy=False):
     webull_items = parse_webull(wb_html)
     log(f"  Webull: {len(webull_items)} 条")
 
-    log("Dime! 使用静态数据（页面 403）")
-    dime_items = DIME_ITEMS
+    log("抓取 Dime!...")
+    dime_items = parse_dime()
 
     html = build_html(dime_items, invx_items, webull_items)
     OUTPUT.write_text(html, encoding="utf-8")
