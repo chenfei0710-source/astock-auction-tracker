@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>集合竞价 &amp; 大盘数据</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -158,7 +159,7 @@
 <body>
   <div class="wrap">
     <h1>集合竞价 &amp; 大盘数据</h1>
-    <p class="meta">数据源: 腾讯行情 &nbsp;|&nbsp; 每交易日 09:26 &amp; 15:15 自动更新 &nbsp;|&nbsp; 最后更新: 2026-09-16 11:25</p>
+    <p class="meta">数据源: 腾讯行情 &nbsp;|&nbsp; 每交易日 09:26 &amp; 15:15 自动更新 &nbsp;|&nbsp; 最后更新: 2026-09-16 11:28</p>
 
     <!-- 数据明细表 -->
     <div class="section-title" style="margin-bottom:16px">数据明细</div>
@@ -409,6 +410,17 @@
   const MKT_AMT  = [2.51, 2.08, 1.88, 2.01, 1.83, 1.8, 2.12, 2.1, 2.13, 2.04, 1.79, 1.76, 2.03, 1.95, 1.96, 1.86, 1.65, 1.97, 1.63, 1.61, null];
   const PCT_VALS = [-2.4, 0.24, 0.04, -0.59, 0.19, 0.59, 1.13, -0.1, 0.86, -0.16, -0.97, 0.02, -0.3, 0.07, 0.2, 0.28, -0.43, -1.18, -0.07, -0.54, null];
 
+  Chart.register(ChartDataLabels);
+
+  const DATALABEL_LINE = {
+    display: true,
+    anchor: 'end',
+    align: 'top',
+    offset: 2,
+    font: { size: 9, weight: '600' },
+    formatter: (v) => v === null ? '' : v,
+  };
+
   const CHART_DEFAULTS = {
     responsive: true,
     maintainAspectRatio: true,
@@ -456,11 +468,21 @@
     data: {
       labels: LABELS,
       datasets: [
-        lineDataset('集合竞价上证（亿）', SH_AUC,  '#ff8888'),
-        lineDataset('集合竞价创业板（亿）', CYB_AUC, '#fbbf24'),
+        lineDataset('集合竞价上证（亿）', SH_AUC,  '#e53e3e'),
+        lineDataset('集合竞价创业板（亿）', CYB_AUC, '#d97706'),
       ]
     },
-    options: CHART_DEFAULTS,
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        datalabels: {
+          ...DATALABEL_LINE,
+          color: (ctx) => ctx.datasetIndex === 0 ? '#e53e3e' : '#d97706',
+          formatter: (v) => v === null ? '' : v.toFixed(1),
+        },
+      },
+    },
   });
 
   // 成交额折线图
@@ -468,13 +490,23 @@
     type: 'line',
     data: {
       labels: LABELS,
-      datasets: [ lineDataset('沪深成交额（万亿）', MKT_AMT, '#60a5fa') ]
+      datasets: [ lineDataset('沪深成交额（万亿）', MKT_AMT, '#3b82f6') ]
     },
-    options: CHART_DEFAULTS,
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        datalabels: {
+          ...DATALABEL_LINE,
+          color: '#3b82f6',
+          formatter: (v) => v === null ? '' : v.toFixed(2),
+        },
+      },
+    },
   });
 
   // 大盘涨跌柱状图（正负着色）
-  const pctColors = PCT_VALS.map(v => v === null ? '#555' : (v >= 0 ? '#ff5555' : '#22c55e'));
+  const pctColors = PCT_VALS.map(v => v === null ? '#ccc' : (v >= 0 ? '#fc8181' : '#68d391'));
   new Chart(document.getElementById('chartPct'), {
     type: 'bar',
     data: {
@@ -490,7 +522,18 @@
       ...CHART_DEFAULTS,
       plugins: {
         ...CHART_DEFAULTS.plugins,
-        annotation: {}
+        datalabels: {
+          display: true,
+          anchor: (ctx) => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start',
+          align: (ctx) => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'top' : 'bottom',
+          offset: 2,
+          font: { size: 9, weight: '600' },
+          color: (ctx) => {
+            const v = ctx.dataset.data[ctx.dataIndex];
+            return v === null ? '#ccc' : (v >= 0 ? '#e53e3e' : '#38a169');
+          },
+          formatter: (v) => v === null ? '' : (v > 0 ? '+' : '') + v.toFixed(2) + '%',
+        },
       },
       scales: {
         ...CHART_DEFAULTS.scales,

@@ -425,6 +425,7 @@ def render_html(records: list[dict]):
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>集合竞价 &amp; 大盘数据</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
   <style>
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{
@@ -632,6 +633,17 @@ def render_html(records: list[dict]):
   const MKT_AMT  = {mkt_amt_js};
   const PCT_VALS = {pct_js};
 
+  Chart.register(ChartDataLabels);
+
+  const DATALABEL_LINE = {{
+    display: true,
+    anchor: 'end',
+    align: 'top',
+    offset: 2,
+    font: {{ size: 9, weight: '600' }},
+    formatter: (v) => v === null ? '' : v,
+  }};
+
   const CHART_DEFAULTS = {{
     responsive: true,
     maintainAspectRatio: true,
@@ -679,11 +691,21 @@ def render_html(records: list[dict]):
     data: {{
       labels: LABELS,
       datasets: [
-        lineDataset('集合竞价上证（亿）', SH_AUC,  '#ff8888'),
-        lineDataset('集合竞价创业板（亿）', CYB_AUC, '#fbbf24'),
+        lineDataset('集合竞价上证（亿）', SH_AUC,  '#e53e3e'),
+        lineDataset('集合竞价创业板（亿）', CYB_AUC, '#d97706'),
       ]
     }},
-    options: CHART_DEFAULTS,
+    options: {{
+      ...CHART_DEFAULTS,
+      plugins: {{
+        ...CHART_DEFAULTS.plugins,
+        datalabels: {{
+          ...DATALABEL_LINE,
+          color: (ctx) => ctx.datasetIndex === 0 ? '#e53e3e' : '#d97706',
+          formatter: (v) => v === null ? '' : v.toFixed(1),
+        }},
+      }},
+    }},
   }});
 
   // 成交额折线图
@@ -691,13 +713,23 @@ def render_html(records: list[dict]):
     type: 'line',
     data: {{
       labels: LABELS,
-      datasets: [ lineDataset('沪深成交额（万亿）', MKT_AMT, '#60a5fa') ]
+      datasets: [ lineDataset('沪深成交额（万亿）', MKT_AMT, '#3b82f6') ]
     }},
-    options: CHART_DEFAULTS,
+    options: {{
+      ...CHART_DEFAULTS,
+      plugins: {{
+        ...CHART_DEFAULTS.plugins,
+        datalabels: {{
+          ...DATALABEL_LINE,
+          color: '#3b82f6',
+          formatter: (v) => v === null ? '' : v.toFixed(2),
+        }},
+      }},
+    }},
   }});
 
   // 大盘涨跌柱状图（正负着色）
-  const pctColors = PCT_VALS.map(v => v === null ? '#555' : (v >= 0 ? '#ff5555' : '#22c55e'));
+  const pctColors = PCT_VALS.map(v => v === null ? '#ccc' : (v >= 0 ? '#fc8181' : '#68d391'));
   new Chart(document.getElementById('chartPct'), {{
     type: 'bar',
     data: {{
@@ -713,7 +745,18 @@ def render_html(records: list[dict]):
       ...CHART_DEFAULTS,
       plugins: {{
         ...CHART_DEFAULTS.plugins,
-        annotation: {{}}
+        datalabels: {{
+          display: true,
+          anchor: (ctx) => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start',
+          align: (ctx) => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'top' : 'bottom',
+          offset: 2,
+          font: {{ size: 9, weight: '600' }},
+          color: (ctx) => {{
+            const v = ctx.dataset.data[ctx.dataIndex];
+            return v === null ? '#ccc' : (v >= 0 ? '#e53e3e' : '#38a169');
+          }},
+          formatter: (v) => v === null ? '' : (v > 0 ? '+' : '') + v.toFixed(2) + '%',
+        }},
       }},
       scales: {{
         ...CHART_DEFAULTS.scales,
