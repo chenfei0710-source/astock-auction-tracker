@@ -354,6 +354,166 @@ def build_analysis(records: list[dict]) -> str:
 </div>"""
 
 
+def build_market_summary(records: list[dict]) -> str:
+    """生成今日大盘走势技术面总结 HTML。"""
+    close_recs = [r for r in records
+                  if r.get("sh_close") is not None and r.get("sh_pct_chg") is not None]
+    if len(close_recs) < 2:
+        return ""
+
+    closes   = [r["sh_close"]        for r in close_recs]
+    pcts     = [r["sh_pct_chg"]      for r in close_recs]
+    mkt_vals = [r["market_amount_wan"] for r in close_recs
+                if r.get("market_amount_wan") is not None]
+    auc_vals = [r["sh_auction_yi"]   for r in close_recs
+                if r.get("sh_auction_yi") is not None]
+
+    today     = close_recs[-1]
+    prev      = close_recs[-2]
+    td_close  = today["sh_close"]
+    td_pct    = today["sh_pct_chg"]
+    td_date   = today["date"]
+    td_mkt    = today.get("market_amount_wan")
+    td_auc    = today.get("sh_auction_yi")
+
+    # ── 均线计算 ─────────────────────────────────────────────────────────────
+    def ma(n):
+        return round(_mean(closes[-n:]), 2) if len(closes) >= n else None
+
+    ma5  = ma(5)
+    ma10 = ma(10)
+    ma20 = ma(20)
+
+    def ma_tag(price, ma_val, label):
+        if ma_val is None:
+            return f'<span class="tag-neutral">{label} 数据不足</span>'
+        if price > ma_val:
+            return f'<span class="tag-up">{label} {ma_val:.2f} ↑站上</span>'
+        elif price < ma_val:
+            return f'<span class="tag-down">{label} {ma_val:.2f} ↓跌破</span>'
+        return f'<span class="tag-neutral">{label} {ma_val:.2f} 贴合</span>'
+
+    ma_tags = " ".join([
+        ma_tag(td_close, ma5,  "MA5"),
+        ma_tag(td_close, ma10, "MA10"),
+        ma_tag(td_close, ma20, "MA20"),
+    ])
+
+    # ── 连涨/连跌 ────────────────────────────────────────────────────────────
+    streak = 1
+    direction = 1 if pcts[-1] > 0 else -1
+    for p in reversed(pcts[:-1]):
+        if (p > 0) == (direction > 0):
+            streak += 1
+        else:
+            break
+    streak_str = ""
+    if streak >= 2:
+        if direction > 0:
+            streak_str = f"连续 <strong>{streak}</strong> 日收涨"
+        else:
+            streak_str = f"连续 <strong>{streak}</strong> 日收跌"
+
+    # ── 量价关系 ─────────────────────────────────────────────────────────────
+    mkt_avg5 = _mean(mkt_vals[-5:]) if len(mkt_vals) >= 5 else _mean(mkt_vals)
+    vol_signal = ""
+    if td_mkt and mkt_avg5:
+        if td_pct > 0 and td_mkt >= mkt_avg5 * 1.05:
+            vol_signal = "放量上涨，量价配合，上涨有效性较强。"
+        elif td_pct > 0 and td_mkt < mkt_avg5 * 0.95:
+            vol_signal = "缩量上涨，量能不足，涨势持续性存疑。"
+        elif td_pct < 0 and td_mkt >= mkt_avg5 * 1.05:
+            vol_signal = "放量下跌，卖压较重，短期需警惕进一步回调。"
+        elif td_pct < 0 and td_mkt < mkt_avg5 * 0.95:
+            vol_signal = "缩量下跌，抛压有限，跌势或趋于收敛。"
+        else:
+            vol_signal = "成交量接近近期均值，市场分歧不大。"
+
+    # ── 集合竞价信号 ─────────────────────────────────────────────────────────
+    auc_avg = _mean(auc_vals) if auc_vals else None
+    auc_signal = ""
+    if td_auc and auc_avg:
+        ratio = td_auc / auc_avg
+        if ratio >= 1.15:
+            auc_signal = f"集合竞价 {td_auc:.2f}亿，明显高于均值（{auc_avg:.1f}亿），开盘做多意愿强烈。"
+        elif ratio <= 0.85:
+            auc_signal = f"集合竞价 {td_auc:.2f}亿，低于均值（{auc_avg:.1f}亿），开盘热情偏淡。"
+        else:
+            auc_signal = f"集合竞价 {td_auc:.2f}亿，接近均值（{auc_avg:.1f}亿），开盘情绪平稳。"
+
+    # ── 短期趋势判断 ─────────────────────────────────────────────────────────
+    recent5_close = closes[-5:] if len(closes) >= 5 else closes
+    trend_up   = sum(1 for i in range(1, len(recent5_close)) if recent5_close[i] > recent5_close[i-1])
+    trend_down = sum(1 for i in range(1, len(recent5_close)) if recent5_close[i] < recent5_close[i-1])
+    if trend_up > trend_down + 1:
+        trend_judge = "短期趋势偏多，价格重心逐步抬升。"
+        trend_color = "pos"
+    elif trend_down > trend_up + 1:
+        trend_judge = "短期趋势偏空，价格重心持续下移。"
+        trend_color = "neg"
+    else:
+        trend_judge = "短期震荡整理，多空力量相对均衡。"
+        trend_color = "neutral-text"
+
+    # ── 支撑/压力参考 ────────────────────────────────────────────────────────
+    recent_high = max(closes[-10:]) if len(closes) >= 10 else max(closes)
+    recent_low  = min(closes[-10:]) if len(closes) >= 10 else min(closes)
+    support_str   = f"{recent_low:.2f}"
+    resistance_str = f"{recent_high:.2f}"
+
+    # ── 综合观点 ─────────────────────────────────────────────────────────────
+    pct_color = "pos" if td_pct > 0 else ("neg" if td_pct < 0 else "neutral-text")
+    sign      = "+" if td_pct > 0 else ""
+    arrow     = "↑" if td_pct > 0 else ("↓" if td_pct < 0 else "→")
+
+    streak_html = f'<span class="tag-{"up" if direction>0 else "down"}">{streak_str}</span>' if streak_str else ""
+
+    items = []
+    if vol_signal:  items.append(vol_signal)
+    if auc_signal:  items.append(auc_signal)
+    items.append(trend_judge)
+    items.append(f"近10日参考支撑 <strong>{support_str}</strong>，压力 <strong>{resistance_str}</strong>。")
+    items_html = "".join(f"<li>{s}</li>" for s in items)
+
+    return f"""
+<div class="summary-section">
+  <div class="sum-header">
+    <div class="sum-date">{td_date} 大盘总结</div>
+    <div class="sum-close">
+      上证 <strong>{td_close:.2f}</strong>
+      <span class="{pct_color}"> {sign}{td_pct:.2f}% {arrow}</span>
+      {streak_html}
+    </div>
+  </div>
+  <div class="sum-body">
+    <div class="sum-col">
+      <div class="sum-block-title">均线系统</div>
+      <div class="ma-tags">{ma_tags}</div>
+      <div class="sum-block-title" style="margin-top:14px">技术分析</div>
+      <ul class="sum-list">{items_html}</ul>
+    </div>
+    <div class="sum-col">
+      <div class="sum-block-title">量能概况</div>
+      <div class="vol-row">
+        <div class="vol-card">
+          <div class="vol-label">今日成交额</div>
+          <div class="vol-val">{f"{td_mkt:.2f}万亿" if td_mkt else "—"}</div>
+          <div class="vol-sub">近5日均值 {f"{mkt_avg5:.2f}万亿" if mkt_avg5 else "—"}</div>
+        </div>
+        <div class="vol-card">
+          <div class="vol-label">集合竞价</div>
+          <div class="vol-val">{f"{td_auc:.2f}亿" if td_auc else "—"}</div>
+          <div class="vol-sub">历史均值 {f"{auc_avg:.1f}亿" if auc_avg else "—"}</div>
+        </div>
+      </div>
+      <div class="sum-block-title" style="margin-top:14px">短期趋势</div>
+      <p class="{trend_color}" style="font-size:0.88rem;line-height:1.6">{trend_judge}</p>
+    </div>
+  </div>
+  <p class="disclaimer" style="margin-top:10px">⚠️ 以上为技术面参考，不构成投资建议。</p>
+</div>"""
+
+
 def render_html(records: list[dict]):
     # ── 表格行 ────────────────────────────────────────────────────────────────
     rows_html = ""
@@ -414,7 +574,8 @@ def render_html(records: list[dict]):
     pct_js      = _json.dumps(pct_vals,     ensure_ascii=False)
 
     # ── 分析与策略 ────────────────────────────────────────────────────────────
-    analysis_html = build_analysis(records)
+    analysis_html  = build_analysis(records)
+    summary_html   = build_market_summary(records)
 
     updated_at = datetime.now(CST).strftime("%Y-%m-%d %H:%M")
 
@@ -568,10 +729,67 @@ def render_html(records: list[dict]):
     }}
     td.red {{ color: #c53030; font-weight: 600; }}
 
+    /* ── 今日总结 ── */
+    .summary-section {{
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px 24px;
+      box-shadow: 0 1px 8px rgba(0,0,0,.08);
+      margin-bottom: 36px;
+    }}
+    .sum-header {{
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 16px; flex-wrap: wrap;
+    }}
+    .sum-date {{ font-size: 0.82rem; color: #a0aec0; }}
+    .sum-close {{ font-size: 1.15rem; font-weight: 700; color: #1a202c; }}
+    .sum-body {{
+      display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+    }}
+    .sum-col {{ display: flex; flex-direction: column; }}
+    .sum-block-title {{
+      font-size: 0.75rem; font-weight: 700; color: #a0aec0;
+      text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;
+    }}
+    .ma-tags {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+    .tag-up {{
+      background: #fff5f5; color: #c53030; border: 1px solid #feb2b2;
+      border-radius: 6px; padding: 3px 8px; font-size: 0.78rem; font-weight: 600;
+    }}
+    .tag-down {{
+      background: #f0fff4; color: #276749; border: 1px solid #9ae6b4;
+      border-radius: 6px; padding: 3px 8px; font-size: 0.78rem; font-weight: 600;
+    }}
+    .tag-neutral {{
+      background: #f7fafc; color: #718096; border: 1px solid #e2e8f0;
+      border-radius: 6px; padding: 3px 8px; font-size: 0.78rem; font-weight: 600;
+    }}
+    .sum-list {{
+      list-style: none; padding: 0; margin: 0;
+    }}
+    .sum-list li {{
+      font-size: 0.82rem; color: #4a5568; padding: 5px 0 5px 14px;
+      border-bottom: 1px solid #edf2f7; line-height: 1.6; position: relative;
+    }}
+    .sum-list li::before {{
+      content: "›"; position: absolute; left: 0; color: #3b82f6; font-weight: 700;
+    }}
+    .sum-list li:last-child {{ border-bottom: none; }}
+    .vol-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }}
+    .vol-card {{
+      background: #f7fafc; border-radius: 8px; padding: 12px; text-align: center;
+    }}
+    .vol-label {{ font-size: 0.7rem; color: #a0aec0; margin-bottom: 4px; }}
+    .vol-val {{ font-size: 1rem; font-weight: 700; color: #2d3748; margin-bottom: 2px; }}
+    .vol-sub {{ font-size: 0.68rem; color: #a0aec0; }}
+    .neutral-text {{ color: #718096; }}
+
     @media (max-width: 640px) {{
       .chart-grid {{ grid-template-columns: 1fr; }}
       .analysis-wrap {{ grid-template-columns: 1fr; }}
       .an-grid {{ grid-template-columns: 1fr; }}
+      .sum-body {{ grid-template-columns: 1fr; }}
+      .vol-row {{ grid-template-columns: 1fr 1fr; }}
     }}
   </style>
 </head>
@@ -620,8 +838,12 @@ def render_html(records: list[dict]):
       </div>
     </div>
 
+    <!-- 今日大盘总结 -->
+    <div class="section-title" style="margin-bottom:16px">今日大盘走势总结</div>
+    {summary_html}
+
     <!-- 分析与策略 -->
-    <div class="section-title" style="margin-bottom:16px">分析与策略</div>
+    <div class="section-title" style="margin-bottom:16px">历史趋势分析</div>
     {analysis_html}
   </div>
 
