@@ -3,7 +3,7 @@ name: 补触发监控
 on:
   schedule:
     - cron: '50 1 * * 1-5'   # 09:50 CST — 检查集合竞价是否已抓取
-    - cron: '40 7 * * 1-5'   # 15:40 CST — 检查收盘数据是否已抓取
+    - cron: '30 7 * * 1-5'   # 15:30 CST — 检查收盘数据是否已抓取
   workflow_dispatch:
 
 jobs:
@@ -17,7 +17,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check and re-trigger if missed
+      - name: Install dependencies
+        run: pip install requests -q
+
+      - name: Check data and re-trigger only if missing
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -27,25 +30,53 @@ jobs:
           TODAY=$(TZ=Asia/Shanghai date +%Y-%m-%d)
           echo "UTC hour: $HOUR  |  CST date: $TODAY"
 
-          # 判断本次是检查集合竞价还是收盘
+          # 判断本次检查的是集合竞价还是收盘
           if [ "$HOUR" = "01" ]; then
             MODE="auction"
+            FIELD="sh_auction_yi"
           else
             MODE="close"
+            FIELD="sh_close"
           fi
-          echo "Checking mode: $MODE"
+          echo "Mode: $MODE  |  Checking field: $FIELD"
 
-          # 查询今天的主工作流是否已成功运行过对应 mode
-          RUNS=$(gh api \
-            "repos/$REPO/actions/workflows/update-auction.yml/runs?per_page=10" \
-            --jq '.workflow_runs[] | select(.created_at >= "'$TODAY'") | .conclusion')
+          # 直接读 JSON 判断今日数据是否已存在且合理
+          python3 - << PYEOF
+          import json, sys, os
 
-          echo "Today's runs: $RUNS"
+          today = os.environ.get('TODAY', '')
+          field = '$FIELD'
+          mode  = '$MODE'
 
-          if echo "$RUNS" | grep -q "success"; then
-            echo "✅ 主工作流今日已成功运行，无需补触发。"
+          with open('auction_history.json') as f:
+              records = json.load(f)
+
+          today_rec = next((r for r in records if r['date'] == today), None)
+          print(f"Today's record: {today_rec}")
+
+          if today_rec is None:
+              print("MISSING: no record for today")
+              sys.exit(1)
+
+          val = today_rec.get(field)
+          if val is None:
+              print(f"MISSING: {field} is null")
+              sys.exit(1)
+
+          # 合理性校验：集合竞价应 < 500亿，收盘价应 > 1000
+          if mode == 'auction' and float(val) > 500:
+              print(f"INVALID: {field}={val} exceeds 500亿, likely captured intraday total")
+              sys.exit(2)
+
+          print(f"OK: {field}={val}, no re-trigger needed")
+          sys.exit(0)
+          PYEOF
+
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✅ 数据已存在且合理，无需补触发。"
           else
-            echo "⚠️  主工作流今日未成功运行，补触发 mode=$MODE ..."
+            echo "⚠️  数据缺失或异常（exit=$EXIT_CODE），补触发 mode=$MODE ..."
             gh workflow run update-auction.yml \
               --ref main \
               --field mode=$MODE
