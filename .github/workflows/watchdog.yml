@@ -1,0 +1,53 @@
+name: 补触发监控
+
+on:
+  schedule:
+    - cron: '50 1 * * 1-5'   # 09:50 CST — 检查集合竞价是否已抓取
+    - cron: '40 7 * * 1-5'   # 15:40 CST — 检查收盘数据是否已抓取
+  workflow_dispatch:
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check and re-trigger if missed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          HOUR=$(date -u +%H)
+          TODAY=$(TZ=Asia/Shanghai date +%Y-%m-%d)
+          echo "UTC hour: $HOUR  |  CST date: $TODAY"
+
+          # 判断本次是检查集合竞价还是收盘
+          if [ "$HOUR" = "01" ]; then
+            MODE="auction"
+          else
+            MODE="close"
+          fi
+          echo "Checking mode: $MODE"
+
+          # 查询今天的主工作流是否已成功运行过对应 mode
+          RUNS=$(gh api \
+            "repos/$REPO/actions/workflows/update-auction.yml/runs?per_page=10" \
+            --jq '.workflow_runs[] | select(.created_at >= "'$TODAY'") | .conclusion')
+
+          echo "Today's runs: $RUNS"
+
+          if echo "$RUNS" | grep -q "success"; then
+            echo "✅ 主工作流今日已成功运行，无需补触发。"
+          else
+            echo "⚠️  主工作流今日未成功运行，补触发 mode=$MODE ..."
+            gh workflow run update-auction.yml \
+              --ref main \
+              --field mode=$MODE
+            echo "✅ 已触发补跑。"
+          fi
