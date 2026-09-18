@@ -108,10 +108,20 @@ def upsert(records: list[dict], today_iso: str, updates: dict) -> bool:
     return True
 
 
-# ── 9:26 AM: 集合竞价捕获 ─────────────────────────────────────────────────────
+# ── 9:25 AM: 集合竞价捕获 ─────────────────────────────────────────────────────
 def capture_auction():
     now = datetime.now(CST)
     today = now.date().isoformat()
+
+    # ── 防线①：时间窗口锁 ────────────────────────────────────────────────────
+    # 集合竞价 9:25 撮合，9:30 连续竞价开始。超过 9:29 则 field[35] 已含连续竞价，拒绝写入。
+    total_min = now.hour * 60 + now.minute
+    if total_min < 9 * 60 + 20:   # 早于 9:20 → 市场未开，数据无效
+        print(f"  ✗ [{now.strftime('%H:%M')}] 时间过早（9:20 前），拒绝写入")
+        return False
+    if total_min >= 9 * 60 + 30:  # 9:30 起连续竞价已开始，field[35] 不再是纯集合竞价
+        print(f"  ✗ [{now.strftime('%H:%M')}] 已过 9:30，连续竞价已开始，拒绝写入（数据不再精准）")
+        return False
 
     print(f"[{now.strftime('%H:%M')}] 捕获集合竞价数据…")
     quotes = fetch_tencent_quotes(["sh000001", "sz399006"])
@@ -123,10 +133,21 @@ def capture_auction():
         print(f"  ✗ 数据获取失败: sh={sh_yi}  cyb={cyb_yi}")
         return False
 
+    # ── 防线②：异常值检测 ────────────────────────────────────────────────────
+    # 与近 20 日历史均值比较，超过 3 倍视为异常（避免 API 返回全天累计额）
+    records = load_history()
+    recent = [r for r in records[-20:] if r.get("sh_auction_yi") and r.get("cyb_auction_yi")]
+    if len(recent) >= 5:
+        avg_sh  = sum(r["sh_auction_yi"]  for r in recent) / len(recent)
+        avg_cyb = sum(r["cyb_auction_yi"] for r in recent) / len(recent)
+        if sh_yi > avg_sh * 3 or cyb_yi > avg_cyb * 3:
+            print(f"  ✗ 异常值拒绝写入！sh={sh_yi}亿（均值{avg_sh:.1f}亿），cyb={cyb_yi}亿（均值{avg_cyb:.1f}亿）")
+            print(f"  ℹ️  可能抓到非集合竞价数据，本次跳过，不写入任何内容")
+            return False
+
     print(f"  上证集合竞价: {sh_yi}亿")
     print(f"  创业板集合竞价: {cyb_yi}亿")
 
-    records = load_history()
     changed = upsert(records, today, {
         "sh_auction_yi": sh_yi,
         "cyb_auction_yi": cyb_yi,
