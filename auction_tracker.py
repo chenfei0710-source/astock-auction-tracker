@@ -159,14 +159,78 @@ def capture_auction():
     return True
 
 
-# ── 3:15 PM: 收盘数据捕获 ─────────────────────────────────────────────────────
+# ── 东方财富分时 API：集合竞价备路回溯 ──────────────────────────────────────────
+def fetch_em_opening_auction(secid: str) -> float | None:
+    """
+    15:15 备路：从东方财富分时图取当日 09:30 首点成交额作为集合竞价近似值。
+    仅在 9:25 主路未能写入数据时调用，确保每个交易日都有数据。
+    注意：09:30 首点包含集合竞价 + 极少量首分钟连续竞价，轻微偏高，但远优于空白。
+    """
+    url = "https://push2.eastmoney.com/api/qt/stock/trends2/get"
+    params = {
+        "secid": secid,
+        "fields1": "f1,f2,f3,f4,f5,f6,f8",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58",
+        "iscr": "0", "iscca": "0", "ndays": "1",
+        "ut": "fa5fd1943c7b386f172d6893dbfba10b",
+    }
+    headers = {
+        "Referer": "https://finance.eastmoney.com/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    }
+    for attempt in range(4):
+        try:
+            r = requests.get(url, params=params, headers=headers, timeout=10)
+            r.raise_for_status()
+            trends = r.json().get("data", {}).get("trends", [])
+            if not trends:
+                return None
+            first = trends[0].split(",")
+            if len(first) < 7 or first[6] in ("", "-", "0"):
+                return None
+            amt = round(float(first[6]) / 1e8, 2)
+            t   = first[0].split(" ")[-1] if " " in first[0] else first[0]
+            print(f"    [EM备路] secid={secid}  首点={t}  成交额={amt}亿")
+            return amt
+        except Exception:
+            if attempt < 3:
+                time.sleep(2 ** attempt)
+    return None
+
+
+# ── 3:15 PM: 收盘数据捕获 + 集合竞价备路补充 ──────────────────────────────────
 def capture_close():
     now = datetime.now(CST)
     today = now.date().isoformat()
 
     print(f"[{now.strftime('%H:%M')}] 捕获收盘数据…")
-    quotes = fetch_tencent_quotes(["sh000001", "sz399001"])
 
+    # ── 检查今日集合竞价是否已有数据（主路 9:25 是否成功写入）────────────────
+    records = load_history()
+    today_rec = next((r for r in records if r["date"] == today), {})
+    auction_missing = not today_rec.get("sh_auction_yi")
+
+    if auction_missing:
+        print("  ⚠️  今日集合竞价数据缺失（9:25 主路未成功），启动东方财富备路回溯…")
+        sh_auc  = fetch_em_opening_auction("1.000001")
+        cyb_auc = fetch_em_opening_auction("0.399006")
+        if sh_auc and cyb_auc:
+            # 备路异常值检测：同样不允许超均值 3 倍
+            recent = [r for r in records[-20:] if r.get("sh_auction_yi") and r.get("cyb_auction_yi")]
+            if len(recent) >= 5:
+                avg_sh  = sum(r["sh_auction_yi"]  for r in recent) / len(recent)
+                avg_cyb = sum(r["cyb_auction_yi"] for r in recent) / len(recent)
+                if sh_auc > avg_sh * 3 or cyb_auc > avg_cyb * 3:
+                    print(f"  ✗ 备路数据异常，拒绝写入（sh={sh_auc}亿 vs 均值{avg_sh:.1f}亿）")
+                    sh_auc = cyb_auc = None
+            if sh_auc:
+                upsert(records, today, {"sh_auction_yi": sh_auc, "cyb_auction_yi": cyb_auc})
+                print(f"  ✓ 备路补充 → 上证={sh_auc}亿  创业板={cyb_auc}亿")
+        else:
+            print("  ✗ 备路 API 也失败，集合竞价数据本日缺失")
+
+    # ── 收盘数据（腾讯行情）────────────────────────────────────────────────────
+    quotes = fetch_tencent_quotes(["sh000001", "sz399001"])
     sh = parse_index_info(quotes.get("sh000001", []))
     sz = parse_index_info(quotes.get("sz399001", []))
 
@@ -174,17 +238,16 @@ def capture_close():
         print("  ✗ 上证数据获取失败")
         return False
 
-    total_yi = (sh["amount_yi"] or 0) + (sz["amount_yi"] or 0)
-    total_wan = round(total_yi / 10000, 2)  # 亿 → 万亿
+    total_yi  = (sh["amount_yi"] or 0) + (sz["amount_yi"] or 0)
+    total_wan = round(total_yi / 10000, 2)
 
     print(f"  上证收盘: {sh['price']}  {sh['pct_chg']:+.2f}%")
     print(f"  沪深成交额: {total_wan}万亿")
 
-    records = load_history()
     changed = upsert(records, today, {
-        "sh_close":           sh["price"],
-        "sh_pct_chg":         sh["pct_chg"],
-        "market_amount_wan":  total_wan,
+        "sh_close":          sh["price"],
+        "sh_pct_chg":        sh["pct_chg"],
+        "market_amount_wan": total_wan,
     })
     if changed:
         save_history(records)
