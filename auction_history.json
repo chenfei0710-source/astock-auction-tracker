@@ -176,6 +176,8 @@
     "market_amount_wan": 1.82
   },
   {
-    "date": "2026-09-18"
+    "date": "2026-09-18",
+    "sh_auction_yi": 84.21,
+    "cyb_auction_yi": 41.09
   }
 ]
