@@ -2,7 +2,7 @@ name: 更新集合竞价数据
 
 on:
   schedule:
-    - cron: '26 1 * * 1-5'   # 北京时间 09:26 (UTC+8) → 捕获集合竞价
+    - cron: '25 1 * * 1-5'   # 北京时间 09:25 (UTC+8) → 捕获集合竞价（9:25撮合后，9:30连续竞价前）
     - cron: '15 7 * * 1-5'   # 北京时间 15:15 (UTC+8) → 捕获收盘数据
   workflow_dispatch:
     inputs:
@@ -28,7 +28,7 @@ jobs:
         run: |
           if [ "${{ github.event.inputs.mode }}" = "auction" ]; then
             python3 auction_tracker.py --capture-auction
-          elif [ "${{ github.event.schedule }}" = "26 1 * * 1-5" ]; then
+          elif [ "${{ github.event.schedule }}" = "25 1 * * 1-5" ]; then
             python3 auction_tracker.py --capture-auction
           else
             python3 auction_tracker.py --capture-close
