@@ -4,7 +4,7 @@
 # 由 launchd 在北京时间 9:25 和 15:15 调用
 
 MODE="${1:-auction}"
-REPO="/Users/admin/.assistant/astock-flow"
+REPO="/Users/admin/.assistant/astock-auction"
 LOG="$REPO/logs/push_${MODE}.log"
 PYTHON="/usr/bin/python3"
 
