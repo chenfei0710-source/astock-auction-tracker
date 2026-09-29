@@ -230,5 +230,10 @@
     "sh_close": 3823.62,
     "sh_pct_chg": -1.67,
     "market_amount_wan": 1.7
+  },
+  {
+    "date": "2026-09-29",
+    "sh_auction_yi": 50.97,
+    "cyb_auction_yi": 25.3
   }
 ]
