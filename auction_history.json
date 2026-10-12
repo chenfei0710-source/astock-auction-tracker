@@ -1,13 +1,5 @@
 [
   {
-    "date": "2026-08-31",
-    "sh_auction_yi": 123.4,
-    "cyb_auction_yi": 55.75,
-    "market_amount_wan": 2.13,
-    "sh_close": 3986.3,
-    "sh_pct_chg": 0.86
-  },
-  {
     "date": "2026-09-01",
     "sh_auction_yi": 74.79,
     "cyb_auction_yi": 39.32,
@@ -238,5 +230,13 @@
     "sh_close": 3813.79,
     "sh_pct_chg": 0.05,
     "market_amount_wan": 1.9
+  },
+  {
+    "date": "2026-10-12",
+    "sh_auction_yi": 67.46,
+    "cyb_auction_yi": 35.33,
+    "sh_close": 3820.41,
+    "sh_pct_chg": 0.17,
+    "market_amount_wan": 0.25
   }
 ]
