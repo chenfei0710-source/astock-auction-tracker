@@ -31,9 +31,39 @@ CST = timezone(timedelta(hours=8))
 BASE_DIR = Path(__file__).parent
 DATA_FILE = BASE_DIR / "auction_history.json"
 HTML_FILE = BASE_DIR / "docs" / "index.html"
+HOLIDAYS_FILE = BASE_DIR / "holidays.json"
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 WEEKDAYS_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+
+# ── 交易日历 ─────────────────────────────────────────────────────────────────
+def _load_trading_calendar() -> tuple[set[str], set[str]]:
+    """读 holidays.json 返回 (holidays_set, extra_trading_days_set)，YYYY-MM-DD 字符串。
+    文件缺失或损坏 → 返回空集，保守地退化为『按周一周五判断』。"""
+    if not HOLIDAYS_FILE.exists():
+        return set(), set()
+    try:
+        with open(HOLIDAYS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        holidays = set(data.get("holidays", []))
+        extra = set(data.get("extra_trading_days", []))
+        return holidays, extra
+    except (json.JSONDecodeError, OSError):
+        return set(), set()
+
+
+_HOLIDAYS, _EXTRA_TRADING_DAYS = _load_trading_calendar()
+
+
+def is_trading_day(d: date) -> bool:
+    """A 股是否交易日。规则：周末默认非交易日，但调休补班日例外；工作日默认交易日，但节假日例外。"""
+    iso = d.isoformat()
+    if iso in _EXTRA_TRADING_DAYS:
+        return True
+    if iso in _HOLIDAYS:
+        return False
+    return d.weekday() < 5
 
 # ── Tencent Quote 解析 ────────────────────────────────────────────────────────
 def fetch_tencent_quotes(codes: list[str]) -> dict[str, list[str]]:
@@ -1189,6 +1219,11 @@ def main():
     args = parser.parse_args()
 
     try:
+        if args.capture_auction or args.capture_close:
+            today = datetime.now(CST).date()
+            if not is_trading_day(today):
+                print(f"[{today.isoformat()}] 非交易日（节假日/周末），跳过捕获")
+                sys.exit(0)
         if args.capture_auction:
             ok = capture_auction()
         elif args.capture_close:
