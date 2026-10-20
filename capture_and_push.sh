@@ -12,15 +12,23 @@ cd "$REPO" || exit 1
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 开始 $MODE 捕获" >> "$LOG"
 
-# ── 时间窗口保护：集合竞价只在 9:25-9:29 窗口内有效 ─────────────────────────
+# ── 时间窗口保护：集合竞价主路只在 9:25-9:29 窗口内有效 ─────────────────────
 # 注意：date '+%H'/%M 在 macOS 上返回带前导零（如 "09"），bash 算术会当八进制报错。
 # 用 $((10#...)) 强制十进制解析，避免前导零问题。
+#
+# 2026-10-20 修复：原逻辑 9:30 后直接 exit 0，但 Python 内的备路降级
+# 循环需要等到 9:30+ 才能从东方财富拿到 09:30 首点。放宽到 9:35
+# (575)，给 Python 备路循环留 5 分钟空间。
 if [ "$MODE" = "auction" ]; then
   HOUR=$((10#$(date '+%H')))
   MINUTE=$((10#$(date '+%M')))
   TOTAL_MINUTES=$((HOUR * 60 + MINUTE))
-  if [ "$TOTAL_MINUTES" -gt 569 ]; then
-    echo "[$(date '+%H:%M:%S')] ⚠️ 已过 9:30，跳过集合竞价捕获" >> "$LOG"
+  if [ "$TOTAL_MINUTES" -lt 560 ]; then
+    echo "[$(date '+%H:%M:%S')] ⚠️ 早于 9:20，跳过集合竞价捕获" >> "$LOG"
+    exit 0
+  fi
+  if [ "$TOTAL_MINUTES" -gt 575 ]; then
+    echo "[$(date '+%H:%M:%S')] ⚠️ 已过 9:35，跳过集合竞价捕获" >> "$LOG"
     exit 0
   fi
 fi

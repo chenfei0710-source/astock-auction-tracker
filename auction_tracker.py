@@ -146,35 +146,62 @@ def capture_auction():
     today = now.date().isoformat()
 
     # ── 防线①：时间窗口锁 ────────────────────────────────────────────────────
-    # 集合竞价 9:25 撮合，9:30 连续竞价开始。超过 9:29 则 field[35] 已含连续竞价，拒绝写入。
+    # 集合竞价 9:25 撮合，9:30 连续竞价开始。超过 9:29 则腾讯 field[35] 已含连续竞价，不再纯净。
     total_min = now.hour * 60 + now.minute
     if total_min < 9 * 60 + 20:   # 早于 9:20 → 市场未开，数据无效
         print(f"  ✗ [{now.strftime('%H:%M')}] 时间过早（9:20 前），拒绝写入")
         return False
-    if total_min >= 9 * 60 + 30:  # 9:30 起连续竞价已开始，field[35] 不再是纯集合竞价
-        print(f"  ✗ [{now.strftime('%H:%M')}] 已过 9:30，连续竞价已开始，拒绝写入（数据不再精准）")
-        return False
+    main_route_skipped = False
+    if total_min >= 9 * 60 + 30:  # 9:30 后腾讯主路已污染，跳过主路直接走备路
+        print(f"  ⚠️ [{now.strftime('%H:%M')}] 已过 9:30，腾讯主路跳过，直接走东方财富备路")
+        main_route_skipped = True
 
-    print(f"[{now.strftime('%H:%M')}] 捕获集合竞价数据…")
+    if not main_route_skipped:
+        print(f"[{now.strftime('%H:%M')}] 捕获集合竞价数据…")
 
     # ── 防线①.5：零值重试（API 撮合后需 5-30 秒更新，0 代表尚未就绪） ─────────
     sh_yi = cyb_yi = None
-    for attempt in range(7):   # 最多等 ~90 秒
-        quotes = fetch_tencent_quotes(["sh000001", "sz399006"])
-        sh_yi  = parse_amount_yi(quotes.get("sh000001", []))
-        cyb_yi = parse_amount_yi(quotes.get("sz399006", []))
-        now2 = datetime.now(CST)
-        if sh_yi and cyb_yi and sh_yi > 0 and cyb_yi > 0:
-            break
-        if now2.hour * 60 + now2.minute >= 9 * 60 + 30:
-            print(f"  ✗ 等待期间已过 9:30，放弃重试")
-            return False
-        print(f"  ⏳ 第{attempt+1}次: sh={sh_yi} cyb={cyb_yi}，API 尚未就绪，等待15秒…")
-        time.sleep(15)
+    if not main_route_skipped:
+        for attempt in range(7):   # 最多等 ~90 秒
+            quotes = fetch_tencent_quotes(["sh000001", "sz399006"])
+            sh_yi  = parse_amount_yi(quotes.get("sh000001", []))
+            cyb_yi = parse_amount_yi(quotes.get("sz399006", []))
+            now2 = datetime.now(CST)
+            if sh_yi and cyb_yi and sh_yi > 0 and cyb_yi > 0:
+                break
+            if now2.hour * 60 + now2.minute >= 9 * 60 + 30:
+                print(f"  ⚠️ 等待期间已过 9:30，放弃主路重试，转入备路")
+                break
+            print(f"  ⏳ 第{attempt+1}次: sh={sh_yi} cyb={cyb_yi}，API 尚未就绪，等待15秒…")
+            time.sleep(15)
 
     if not sh_yi or not cyb_yi or sh_yi <= 0 or cyb_yi <= 0:
-        print(f"  ✗ 数据获取失败: sh={sh_yi}  cyb={cyb_yi}")
-        return False
+        print(f"  ✗ 腾讯主路失败: sh={sh_yi}  cyb={cyb_yi}")
+        # ── 即时降级备路（东方财富 09:30 首点）──────────────────────────────
+        # 主路 7 次重试仍拿不到（通常是 sz399006 集合竞价阶段返回 0），
+        # 不再像以前那样 return False 等到 15:15 才补，而是当场切备路。
+        # 备路取 09:30 首点成交额，9:25-9:30 期间调用会拿到 None 或昨日，
+        # 所以这里要循环等到 9:30 之后拿到有效值。
+        print("  ↻ 切换东方财富备路，循环等待 9:30 首点就绪…")
+        sh_yi = cyb_yi = None
+        for em_attempt in range(12):   # 最多等 ~120 秒
+            now3 = datetime.now(CST)
+            # 备路在 9:30 之前通常拿不到，等到 9:30 后才有
+            if now3.hour * 60 + now3.minute >= 9 * 60 + 30:
+                sh_yi  = fetch_em_opening_auction("1.000001")
+                cyb_yi = fetch_em_opening_auction("0.399006")
+                if sh_yi and cyb_yi and sh_yi > 0 and cyb_yi > 0:
+                    print(f"  ✓ 备路第{em_attempt+1}次成功 → sh={sh_yi}亿 cyb={cyb_yi}亿")
+                    break
+                print(f"  ⏳ 备路第{em_attempt+1}次: sh={sh_yi} cyb={cyb_yi}，等 10 秒…")
+            else:
+                print(f"  ⏳ [{now3.strftime('%H:%M')}] 未到 9:30，等 10 秒…")
+            time.sleep(10)
+
+        if not sh_yi or not cyb_yi or sh_yi <= 0 or cyb_yi <= 0:
+            print(f"  ✗ 备路连续失败: sh={sh_yi}  cyb={cyb_yi}，放弃（留待 15:15 备路再补）")
+            return False
+        print(f"  ✓ 备路降级成功: sh={sh_yi}亿  cyb={cyb_yi}亿")
 
     # ── 防线②：异常值检测 ────────────────────────────────────────────────────
     # 与近 20 日历史均值比较，超过 3 倍视为异常（避免 API 返回全天累计额）
