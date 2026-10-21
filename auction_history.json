@@ -234,6 +234,9 @@
   {
     "date": "2026-10-21",
     "sh_auction_yi": 58.39,
-    "cyb_auction_yi": 37.33
+    "cyb_auction_yi": 37.33,
+    "sh_close": 3713.03,
+    "sh_pct_chg": -0.6,
+    "market_amount_wan": 1.43
   }
 ]
