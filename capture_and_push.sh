@@ -1,7 +1,7 @@
 #!/bin/bash
 # 集合竞价捕获 + 推送脚本
-# 用法: capture_and_push.sh [auction|close]
-# 由 launchd 在北京时间 9:25 和 15:15 调用
+# 用法: capture_and_push.sh [auction|close|watchdog]
+# 由 launchd 在北京时间 9:25(auction)、9:30(watchdog)、15:15(close) 调用
 
 MODE="${1:-auction}"
 REPO="/Users/admin/.assistant/astock-auction"
@@ -19,6 +19,9 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] 开始 $MODE 捕获" >> "$LOG"
 # 2026-10-20 修复：原逻辑 9:30 后直接 exit 0，但 Python 内的备路降级
 # 循环需要等到 9:30+ 才能从东方财富拿到 09:30 首点。放宽到 9:35
 # (575)，给 Python 备路循环留 5 分钟空间。
+#
+# 2026-10-28 修复：watchdog 模式不受 9:20-9:35 时间窗限制（语义就是 9:30 之后才触发，
+# 时间窗判断由 Python 内部 watchdog_auction() 负责）
 if [ "$MODE" = "auction" ]; then
   HOUR=$((10#$(date '+%H')))
   MINUTE=$((10#$(date '+%M')))
@@ -42,12 +45,22 @@ git stash pop --quiet 2>> "$LOG"
 if [ "$MODE" = "auction" ]; then
   $PYTHON "$REPO/auction_tracker.py" --capture-auction >> "$LOG" 2>&1
   EXIT_CODE=$?
+elif [ "$MODE" = "watchdog" ]; then
+  $PYTHON "$REPO/auction_tracker.py" --watchdog >> "$LOG" 2>&1
+  EXIT_CODE=$?
 else
   $PYTHON "$REPO/auction_tracker.py" --capture-close >> "$LOG" 2>&1
   EXIT_CODE=$?
 fi
 
 echo "[$(date '+%H:%M:%S')] 脚本退出码: $EXIT_CODE" >> "$LOG"
+
+# watchdog 模式特殊处理：如果 Python 返回 exit=1（无变更/数据已存在/补抓失败），
+# 不走 push 流程。只有 exit=0（成功补抓并写入）才 push。
+if [ "$MODE" = "watchdog" ] && [ "$EXIT_CODE" -ne 0 ]; then
+  echo "[$(date '+%H:%M:%S')] watchdog 无变更或失败，跳过 push" >> "$LOG"
+  exit 0
+fi
 
 # ── 只提交竞价相关文件，不受其他脏文件影响 ────────────────────────────────────
 if git diff --quiet auction_history.json docs/index.html 2>/dev/null && \

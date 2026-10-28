@@ -326,6 +326,77 @@ def capture_close():
     return True
 
 
+# ── 9:30 Watchdog：自校验当日竞价数据是否已写入 ────────────────────────────────
+def watchdog_auction() -> bool:
+    """每个交易日 9:30 自校验：若当日竞价数据缺失，立即用 EM 备路补抓 09:30 首点。
+
+    返回 True 表示本次有变更（写入并渲染了新数据），False 表示无变更。
+    设计目的：9:25 主路失败 + 备路循环放弃的情况下，9:30 这一刻再补救一次，
+    不让数据缺失持续到 15:15 才被 close 模式发现。
+    """
+    now = datetime.now(CST)
+    today = now.date()
+    today_iso = today.isoformat()
+    print(f"[{now.strftime('%H:%M')}] watchdog 自校验 {today_iso}")
+
+    # ── 交易日判断 ──────────────────────────────────────────────────────────────
+    if not is_trading_day(today):
+        print(f"  ✗ {today_iso} 非交易日，跳过")
+        return False
+
+    # ── 时间窗：必须在 9:30-15:00 之间 ─────────────────────────────────────────
+    # 早于 9:30：EM 分时 API 还没出 09:30 首点，备路拿不到数据
+    # 晚于 15:00：等 15:15 close 模式处理更合适
+    total_min = now.hour * 60 + now.minute
+    if total_min < 9 * 60 + 30:
+        print(f"  ✗ 早于 9:30，EM 首点未就绪，跳过")
+        return False
+    if total_min >= 15 * 60:
+        print(f"  ✗ 已到 15:00+，等 close 模式处理")
+        return False
+
+    # ── 检查今日数据是否已存在 ────────────────────────────────────────────────
+    records = load_history()
+    today_rec = next((r for r in records if r.get("date") == today_iso), {})
+    sh_exist = today_rec.get("sh_auction_yi")
+    cyb_exist = today_rec.get("cyb_auction_yi")
+    if sh_exist and cyb_exist and sh_exist > 0 and cyb_exist > 0:
+        print(f"  ✓ 今日数据已存在（sh={sh_exist}亿 cyb={cyb_exist}亿），跳过")
+        return False
+
+    print(f"  ⚠️ 今日竞价数据缺失（sh={sh_exist} cyb={cyb_exist}），启动 EM 备路补抓")
+
+    # ── EM 备路抓 9:30 首点 ────────────────────────────────────────────────────
+    sh_yi = fetch_em_opening_auction("1.000001")
+    cyb_yi = fetch_em_opening_auction("0.399006")
+    if not (sh_yi and cyb_yi and sh_yi > 0 and cyb_yi > 0):
+        print(f"  ✗ EM 备路失败：sh={sh_yi} cyb={cyb_yi}，放弃")
+        return False
+
+    # ── 异常值检测（复用 capture_auction 的逻辑）─────────────────────────────
+    recent = [r for r in records[-20:] if r.get("sh_auction_yi") and r.get("cyb_auction_yi")]
+    if len(recent) >= 5:
+        avg_sh  = sum(r["sh_auction_yi"]  for r in recent) / len(recent)
+        avg_cyb = sum(r["cyb_auction_yi"] for r in recent) / len(recent)
+        if sh_yi > avg_sh * 3 or cyb_yi > avg_cyb * 3:
+            print(f"  ✗ 异常值拒绝写入！sh={sh_yi}亿（均值{avg_sh:.1f}亿）cyb={cyb_yi}亿（均值{avg_cyb:.1f}亿）")
+            return False
+
+    # ── 写入 + 渲染 ────────────────────────────────────────────────────────────
+    changed = upsert(records, today_iso, {
+        "sh_auction_yi":  sh_yi,
+        "cyb_auction_yi": cyb_yi,
+    })
+    if changed:
+        save_history(records)
+        print(f"  ✓ watchdog 补抓成功：sh={sh_yi}亿 cyb={cyb_yi}亿")
+    else:
+        print(f"  ℹ️  数据未变更（可能并发已写入），跳过 push")
+        return False
+    render_html(records)
+    return True
+
+
 # ── HTML 渲染 ─────────────────────────────────────────────────────────────────
 def fmt_date_cn(d: date) -> str:
     wd = WEEKDAYS_CN[d.weekday()]
@@ -1242,11 +1313,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--capture-auction", action="store_true")
     parser.add_argument("--capture-close",   action="store_true")
+    parser.add_argument("--watchdog",       action="store_true",
+                        help="9:30 自校验：若当日竞价数据缺失，立即用 EM 备路补抓")
     parser.add_argument("--render",          action="store_true")
     args = parser.parse_args()
 
     try:
-        if args.capture_auction or args.capture_close:
+        if args.capture_auction or args.capture_close or args.watchdog:
             today = datetime.now(CST).date()
             if not is_trading_day(today):
                 print(f"[{today.isoformat()}] 非交易日（节假日/周末），跳过捕获")
@@ -1255,6 +1328,8 @@ def main():
             ok = capture_auction()
         elif args.capture_close:
             ok = capture_close()
+        elif args.watchdog:
+            ok = watchdog_auction()
         elif args.render:
             records = load_history()
             render_html(records)
