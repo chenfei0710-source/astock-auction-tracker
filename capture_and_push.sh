@@ -7,6 +7,8 @@ MODE="${1:-auction}"
 REPO="/Users/admin/.assistant/astock-auction"
 LOG="$REPO/logs/push_${MODE}.log"
 PYTHON="/usr/bin/python3"
+# 显式 CST 时区，避免 NTP 未同步或系统时区漂移导致时间窗判断错位
+export TZ=Asia/Shanghai
 
 cd "$REPO" || exit 1
 
@@ -37,9 +39,14 @@ if [ "$MODE" = "auction" ]; then
 fi
 
 # ── 拉取最新远程数据（stash 保护本地脏文件，避免 pull 被卡） ─────────────────
-git stash --quiet 2>> "$LOG"
-git pull auction main --rebase --quiet 2>> "$LOG"
-git stash pop --quiet 2>> "$LOG"
+# watchdog 模式跳过 stash/pull：watchdog 触发时本地 auction_history.json/docs/index.html
+# 可能正被本脚本写入，stash + stash pop 在远端有同文件更新时会留下冲突标记。
+# watchdog 是 idempotent 的，直接 add+commit+push 更安全。
+if [ "$MODE" != "watchdog" ]; then
+  git stash --quiet 2>> "$LOG"
+  git pull auction main --rebase --quiet 2>> "$LOG"
+  git stash pop --quiet 2>> "$LOG"
+fi
 
 # ── 执行数据捕获 ─────────────────────────────────────────────────────────────
 if [ "$MODE" = "auction" ]; then
@@ -72,10 +79,12 @@ fi
 git add auction_history.json docs/index.html
 git commit -m "auto: ${MODE} $(date '+%Y-%m-%d %H:%M') CST" --quiet
 
-# ── 推送前再 stash + pull，确保不落后远端 ─────────────────────────────────────
-git stash --quiet 2>> "$LOG"
-git pull auction main --rebase --quiet 2>> "$LOG"
-git stash pop --quiet 2>> "$LOG"
+# ── 推送前再 stash + pull，确保不落后远端（watchdog 模式跳过，原因同上）──────
+if [ "$MODE" != "watchdog" ]; then
+  git stash --quiet 2>> "$LOG"
+  git pull auction main --rebase --quiet 2>> "$LOG"
+  git stash pop --quiet 2>> "$LOG"
+fi
 
 git push auction main --quiet >> "$LOG" 2>&1
 

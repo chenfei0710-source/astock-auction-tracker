@@ -366,11 +366,22 @@ def watchdog_auction() -> bool:
 
     print(f"  ⚠️ 今日竞价数据缺失（sh={sh_exist} cyb={cyb_exist}），启动 EM 备路补抓")
 
-    # ── EM 备路抓 9:30 首点 ────────────────────────────────────────────────────
-    sh_yi = fetch_em_opening_auction("1.000001")
-    cyb_yi = fetch_em_opening_auction("0.399006")
+    # ── EM 备路抓 9:30 首点（加重试，覆盖 9:30:00 就绪窗口）────────────────────
+    # launchd 9:30 准时触发，但 Python 启动 + 网络往返可能要到 9:30:03-9:30:05，
+    # 此时 EM trends 的 09:30 首点成交额字段可能尚未就绪（值为 ""/"-"/"0"）。
+    # 加 5 次间隔 3s 重试，覆盖 9:30:00-9:30:15 就绪窗口。
+    sh_yi = cyb_yi = None
+    for em_attempt in range(5):
+        if em_attempt > 0:
+            print(f"  ⏳ EM 备路第 {em_attempt+1} 次重试，等 3 秒…")
+            time.sleep(3)
+        sh_yi = fetch_em_opening_auction("1.000001")
+        cyb_yi = fetch_em_opening_auction("0.399006")
+        if sh_yi and cyb_yi and sh_yi > 0 and cyb_yi > 0:
+            print(f"  ✓ EM 备路第 {em_attempt+1} 次成功 → sh={sh_yi}亿 cyb={cyb_yi}亿")
+            break
     if not (sh_yi and cyb_yi and sh_yi > 0 and cyb_yi > 0):
-        print(f"  ✗ EM 备路失败：sh={sh_yi} cyb={cyb_yi}，放弃")
+        print(f"  ✗ EM 备路 5 次重试均失败：sh={sh_yi} cyb={cyb_yi}，放弃")
         return False
 
     # ── 异常值检测（复用 capture_auction 的逻辑）─────────────────────────────
