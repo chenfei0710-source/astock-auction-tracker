@@ -38,6 +38,24 @@ if [ "$MODE" = "auction" ]; then
   fi
 fi
 
+# ── 时间窗口保护：close 模式只在 14:50-15:30 窗口内有效 ───────────────────────
+# 2026-11-04 修复：配合 close-capture.plist 的 RunAtLoad=true，避免 Mac 从睡眠
+# 唤醒时（比如早上 10 点）误触发收盘抓取，把盘中行情当收盘价写入。
+# 14:50 起跑给睡眠延迟留 25 分钟余地，15:30 截止避免污染下一交易日。
+if [ "$MODE" = "close" ]; then
+  HOUR=$((10#$(date '+%H')))
+  MINUTE=$((10#$(date '+%M')))
+  TOTAL_MINUTES=$((HOUR * 60 + MINUTE))
+  if [ "$TOTAL_MINUTES" -lt 890 ]; then
+    echo "[$(date '+%H:%M:%S')] ⚠️ 早于 14:50，跳过收盘捕获（RunAtLoad 误触发保护）" >> "$LOG"
+    exit 0
+  fi
+  if [ "$TOTAL_MINUTES" -gt 930 ]; then
+    echo "[$(date '+%H:%M:%S')] ⚠️ 已过 15:30，跳过收盘捕获" >> "$LOG"
+    exit 0
+  fi
+fi
+
 # ── 拉取最新远程数据（stash 保护本地脏文件，避免 pull 被卡） ─────────────────
 # watchdog 模式跳过 stash/pull：watchdog 触发时本地 auction_history.json/docs/index.html
 # 可能正被本脚本写入，stash + stash pop 在远端有同文件更新时会留下冲突标记。
@@ -87,9 +105,27 @@ if [ "$MODE" != "watchdog" ]; then
 fi
 
 git push auction main --quiet >> "$LOG" 2>&1
+PUSH_EXIT=$?
 
-if [ $? -eq 0 ]; then
+if [ $PUSH_EXIT -eq 0 ]; then
   echo "[$(date '+%H:%M:%S')] ✅ 推送成功" >> "$LOG"
 else
-  echo "[$(date '+%H:%M:%S')] ❌ 推送失败" >> "$LOG"
+  echo "[$(date '+%H:%M:%S')] ⚠️ 推送失败（exit=$PUSH_EXIT），远端可能有新 commit，尝试 pull --rebase 后重试" >> "$LOG"
+  # watchdog 模式不 stash（怕 stash pop 冲突），但本地工作区在 commit 后是干净的，
+  # pull --rebase 只会把本地 commit 挪到远端最新之上，安全。
+  # 非 watchdog 模式也走同一路径，行为一致。
+  git pull auction main --rebase >> "$LOG" 2>&1
+  REBASE_EXIT=$?
+  if [ $REBASE_EXIT -ne 0 ]; then
+    echo "[$(date '+%H:%M:%S')] ❌ pull --rebase 失败（exit=$REBASE_EXIT），需手动解决冲突" >> "$LOG"
+    echo "[$(date '+%H:%M:%S')]    cd $REPO && git rebase --abort / git status 查看冲突" >> "$LOG"
+    exit 1
+  fi
+  git push auction main --quiet >> "$LOG" 2>&1
+  if [ $? -eq 0 ]; then
+    echo "[$(date '+%H:%M:%S')] ✅ pull --rebase 后推送成功" >> "$LOG"
+  else
+    echo "[$(date '+%H:%M:%S')] ❌ 重试推送仍失败，需手动排查" >> "$LOG"
+    exit 1
+  fi
 fi
