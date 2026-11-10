@@ -80,6 +80,12 @@ fi
 
 echo "[$(date '+%H:%M:%S')] 脚本退出码: $EXIT_CODE" >> "$LOG"
 
+# ── 终极兜底：不管上面成功失败，确保今天有有效竞价数据 ───────────────────────
+# capture_auction/watchdog/close 内部 main() 已经会调 ensure，但 shell 层再调一次
+# 作为最终防线（尤其防 GA 写入的脏数据被 watchdog 误判为"已有"的情况）
+$PYTHON "$REPO/auction_tracker.py" --ensure >> "$LOG" 2>&1
+echo "[$(date '+%H:%M:%S')] ensure 校验完成" >> "$LOG"
+
 # watchdog 模式特殊处理：如果 Python 返回 exit=1（无变更/数据已存在/补抓失败），
 # 不走 push 流程。只有 exit=0（成功补抓并写入）才 push。
 if [ "$MODE" = "watchdog" ] && [ "$EXIT_CODE" -ne 0 ]; then

@@ -129,8 +129,31 @@ def save_history(records: list[dict]):
         json.dump(records, f, ensure_ascii=False, indent=2)
 
 
+def _find_yesterday(records: list[dict], today_iso: str) -> dict | None:
+    """找到最近的非今天的记录（即昨天或上一个交易日）"""
+    for r in reversed(records):
+        if r.get("date") != today_iso:
+            return r
+    return None
+
+
 def upsert(records: list[dict], today_iso: str, updates: dict) -> bool:
-    """更新或插入今日记录，返回是否有变化"""
+    """更新或插入今日记录，返回是否有变化。
+
+    写入前校验：如果竞价+收盘数据同时完全等于昨天的值，判定为脏数据复制，拒绝写入。
+    这能挡住 GA 凌晨误跑 capture-close 把昨天数据复制成今天的场景。
+    """
+    if "sh_auction_yi" in updates and "cyb_auction_yi" in updates:
+        yesterday = _find_yesterday(records, today_iso)
+        if yesterday and yesterday.get("sh_auction_yi") is not None:
+            same_auc = (updates.get("sh_auction_yi") == yesterday.get("sh_auction_yi") and
+                        updates.get("cyb_auction_yi") == yesterday.get("cyb_auction_yi"))
+            same_close = ("sh_close" in updates and
+                          updates.get("sh_close") == yesterday.get("sh_close") and
+                          yesterday.get("sh_close") is not None)
+            if same_auc and same_close:
+                print(f"  🚫 拒绝写入：竞价+收盘数据与 {yesterday['date']} 完全相同，判定为脏数据复制")
+                return False
     for rec in records:
         if rec["date"] == today_iso:
             changed = any(rec.get(k) != v for k, v in updates.items())
@@ -404,6 +427,88 @@ def watchdog_auction() -> bool:
     else:
         print(f"  ℹ️  数据未变更（可能并发已写入），跳过 push")
         return False
+    render_html(records)
+    return True
+
+
+# ── 终极兜底：确保今天有有效竞价数据 ───────────────────────────────────────────
+def ensure_today_auction() -> bool:
+    """终极校验：确保今天有有效竞价数据。没有就补抓。
+
+    在所有 capture/watchdog/close 路径的末尾调用，形成闭环。
+    有效 = 非 None、非 0、不等于昨天的值（防 GA 复制粘贴脏数据）。
+    返回 True 表示本次有变更（补抓并写入了数据）。
+    """
+    now = datetime.now(CST)
+    today = now.date()
+    today_iso = today.isoformat()
+
+    if not is_trading_day(today):
+        print(f"  [ensure] {today_iso} 非交易日，跳过")
+        return False
+
+    # 必须过了 9:30（EM 09:30 首点才可用）
+    total_min = now.hour * 60 + now.minute
+    if total_min < 9 * 60 + 30:
+        print(f"  [ensure] 早于 9:30，EM 首点未就绪，跳过")
+        return False
+
+    records = load_history()
+    today_rec = next((r for r in records if r.get("date") == today_iso), {})
+    sh = today_rec.get("sh_auction_yi")
+    cyb = today_rec.get("cyb_auction_yi")
+
+    # 判断是否有效：非 None、非 0
+    valid = bool(sh and cyb and sh > 0 and cyb > 0)
+    if valid:
+        # 再检查是否等于昨天（脏数据复制）
+        yesterday = _find_yesterday(records, today_iso)
+        if yesterday and yesterday.get("sh_auction_yi") is not None:
+            if sh == yesterday["sh_auction_yi"] and cyb == yesterday["cyb_auction_yi"]:
+                print(f"  [ensure] 今日竞价数据与昨天完全相同（sh={sh} cyb={cyb}），判定脏数据，重新补抓")
+                valid = False
+
+    if valid:
+        print(f"  [ensure] ✓ 今日竞价数据有效（sh={sh}亿 cyb={cyb}亿）")
+        return False
+
+    print(f"  [ensure] ⚠️ 今日竞价数据无效或缺失，启动 EM 补抓...")
+
+    sh_yi = cyb_yi = None
+    for attempt in range(5):
+        if attempt > 0:
+            print(f"  [ensure] 第 {attempt+1} 次重试，等 3 秒...")
+            time.sleep(3)
+        sh_yi = fetch_em_opening_auction("1.000001")
+        cyb_yi = fetch_em_opening_auction("0.399006")
+        if sh_yi and cyb_yi and sh_yi > 0 and cyb_yi > 0:
+            break
+
+    if not (sh_yi and cyb_yi and sh_yi > 0 and cyb_yi > 0):
+        print(f"  [ensure] ✗ EM 补抓 5 次均失败：sh={sh_yi} cyb={cyb_yi}")
+        return False
+
+    # 异常值检测（排除今天的脏数据）
+    recent = [r for r in records[-20:]
+              if r.get("sh_auction_yi") and r.get("cyb_auction_yi")
+              and r.get("date") != today_iso]
+    if len(recent) >= 5:
+        avg_sh = sum(r["sh_auction_yi"] for r in recent) / len(recent)
+        avg_cyb = sum(r["cyb_auction_yi"] for r in recent) / len(recent)
+        if sh_yi > avg_sh * 3 or cyb_yi > avg_cyb * 3:
+            print(f"  [ensure] ✗ 异常值拒绝：sh={sh_yi}（均值{avg_sh:.1f}）cyb={cyb_yi}（均值{avg_cyb:.1f}）")
+            return False
+
+    # 移除今天的旧记录（可能是 GA 写的脏数据），保留收盘数据后重新写入
+    records = [r for r in records if r.get("date") != today_iso]
+    today_new: dict = {"date": today_iso, "sh_auction_yi": sh_yi, "cyb_auction_yi": cyb_yi}
+    if today_rec.get("sh_close"):
+        today_new["sh_close"] = today_rec["sh_close"]
+        today_new["sh_pct_chg"] = today_rec.get("sh_pct_chg")
+        today_new["market_amount_wan"] = today_rec.get("market_amount_wan")
+    records.append(today_new)
+    save_history(records)
+    print(f"  [ensure] ✓ 补抓成功并写入：sh={sh_yi}亿 cyb={cyb_yi}亿")
     render_html(records)
     return True
 
@@ -1326,21 +1431,33 @@ def main():
     parser.add_argument("--capture-close",   action="store_true")
     parser.add_argument("--watchdog",       action="store_true",
                         help="9:30 自校验：若当日竞价数据缺失，立即用 EM 备路补抓")
+    parser.add_argument("--ensure",          action="store_true",
+                        help="终极校验：确保今天有有效竞价数据，没有就补抓")
     parser.add_argument("--render",          action="store_true")
     args = parser.parse_args()
 
     try:
-        if args.capture_auction or args.capture_close or args.watchdog:
+        if args.capture_auction or args.capture_close or args.watchdog or args.ensure:
             today = datetime.now(CST).date()
             if not is_trading_day(today):
                 print(f"[{today.isoformat()}] 非交易日（节假日/周末），跳过捕获")
                 sys.exit(0)
         if args.capture_auction:
             ok = capture_auction()
+            if not ok:
+                print("  [main] capture_auction 失败，启动终极兜底...")
+                ok = ensure_today_auction()
         elif args.capture_close:
             ok = capture_close()
+            if ok:
+                ensure_today_auction()
         elif args.watchdog:
             ok = watchdog_auction()
+            if not ok:
+                print("  [main] watchdog 无变更，启动终极校验...")
+                ok = ensure_today_auction()
+        elif args.ensure:
+            ok = ensure_today_auction()
         elif args.render:
             records = load_history()
             render_html(records)
